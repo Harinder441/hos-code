@@ -1,0 +1,223 @@
+package main
+
+import (
+	"bytes"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func quietNotes(t *testing.T) *bytes.Buffer {
+	t.Helper()
+	var buf bytes.Buffer
+	prev := notesOut
+	notesOut = &buf
+	t.Cleanup(func() { notesOut = prev })
+	return &buf
+}
+
+func TestAppDirMovesTheOldFolderOnceAndLinksIt(t *testing.T) {
+	notes := quietNotes(t)
+	base := t.TempDir()
+	old := filepath.Join(base, ".px0")
+	if err := os.MkdirAll(filepath.Join(old, "sessions"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "settings.json"), []byte(`{"workbench.colorTheme":"hos"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(old, "sessions", "a.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dir := appDir(base, ".hos-code", ".px0")
+	if dir != filepath.Join(base, ".hos-code") {
+		t.Fatalf("dir = %s", dir)
+	}
+	for _, rel := range []string{"settings.json", "sessions/a.json"} {
+		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
+			t.Fatalf("%s did not move: %v", rel, err)
+		}
+		if _, err := os.Stat(filepath.Join(old, rel)); err != nil {
+			t.Fatalf("%s is not reachable through the old path: %v", rel, err)
+		}
+	}
+	if fi, err := os.Lstat(old); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("old path should be a link, got %v %v", fi, err)
+	}
+	if !strings.Contains(notes.String(), "moved") {
+		t.Fatalf("no note printed: %q", notes.String())
+	}
+	if again := appDir(base, ".hos-code", ".px0"); again != dir {
+		t.Fatalf("second call = %s", again)
+	}
+}
+
+func TestAppDirLeavesAnExistingNewFolderAlone(t *testing.T) {
+	quietNotes(t)
+	base := t.TempDir()
+	for _, d := range []string{"px0", "hos-code"} {
+		if err := os.MkdirAll(filepath.Join(base, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := appDir(base, "hos-code", "px0"); got != filepath.Join(base, "hos-code") {
+		t.Fatalf("got %s", got)
+	}
+	if fi, err := os.Lstat(filepath.Join(base, "px0")); err != nil || !fi.IsDir() {
+		t.Fatalf("old folder should be untouched, got %v %v", fi, err)
+	}
+}
+
+func TestSettingsPathMigratesXDGConfig(t *testing.T) {
+	quietNotes(t)
+	cfg := t.TempDir()
+	t.Setenv("XDG_CONFIG_HOME", cfg)
+	if err := os.MkdirAll(filepath.Join(cfg, "px0"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(cfg, "px0", "settings.json"), []byte(`{"explorer.autoReveal":false}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := readSettings()
+	if got.ExplorerAutoReveal == nil || *got.ExplorerAutoReveal {
+		t.Fatalf("settings lost in migration: %+v", got)
+	}
+	if settingsPath() != filepath.Join(cfg, "hos-code", "settings.json") {
+		t.Fatalf("settingsPath = %s", settingsPath())
+	}
+}
+
+func TestGetenvCompatPrefersNewNameAndNotesOldOnce(t *testing.T) {
+	notes := quietNotes(t)
+	envNoted.Delete("OLD_NAME_FOR_TEST")
+	env := map[string]string{"OLD_NAME_FOR_TEST": "old"}
+	get := func(k string) string { return env[k] }
+	if v := getenvCompat(get, "NEW_NAME_FOR_TEST", "OLD_NAME_FOR_TEST"); v != "old" {
+		t.Fatalf("fallback = %q", v)
+	}
+	getenvCompat(get, "NEW_NAME_FOR_TEST", "OLD_NAME_FOR_TEST")
+	if n := strings.Count(notes.String(), "deprecated"); n != 1 {
+		t.Fatalf("want one deprecation note, got %d: %q", n, notes.String())
+	}
+	env["NEW_NAME_FOR_TEST"] = "new"
+	if v := getenvCompat(get, "NEW_NAME_FOR_TEST", "OLD_NAME_FOR_TEST"); v != "new" {
+		t.Fatalf("new name should win, got %q", v)
+	}
+}
+
+func TestLoadHosLinkReadsNewTokenName(t *testing.T) {
+	quietNotes(t)
+	env := map[string]string{"HOS_URL": "http://127.0.0.1:4000", "HOS_CODE_TOKEN": "new", "HOS_PX0_TOKEN": "old"}
+	got := loadHosLink(func(k string) string { return env[k] }, "")
+	if got == nil || got.token != "new" {
+		t.Fatalf("HOS_CODE_TOKEN should win, got %+v", got)
+	}
+}
+
+func TestLoginGateOnlyOffLoopback(t *testing.T) {
+	quietNotes(t)
+	none := func(string) string { return "" }
+	for _, host := range []string{"127.0.0.1", "::1", "localhost"} {
+		if g, src := loginGateFor(host, 7777, "/", none, "hos-code"); g != nil || src != loginOff {
+			t.Fatalf("%s: loopback should need no login", host)
+		}
+	}
+	g, src := loginGateFor("100.64.0.5", 7777, "/", none, "hos-code")
+	if g == nil || src != loginGenerated || len(g.token) < 32 {
+		t.Fatalf("tailnet bind without a token should generate one, got %+v %v", g, src)
+	}
+	env := map[string]string{loginTokenEnv: "chosen"}
+	g, src = loginGateFor("0.0.0.0", 7777, "/", func(k string) string { return env[k] }, "px0")
+	if g == nil || src != loginFromEnv || g.token != "chosen" {
+		t.Fatalf("env token should be used, got %+v %v", g, src)
+	}
+	legacy := map[string]string{"HOS_PX0_TOKEN": "bridge"}
+	if g, src := loginGateFor("100.64.0.5", 7777, "/", func(k string) string { return legacy[k] }, "hos-code"); g != nil || src != loginLegacyHos {
+		t.Fatalf("an older hos launch should stay as before, got %+v %v", g, src)
+	}
+	if g, src := loginGateFor("100.64.0.5", 7777, "/", none, "px0"); g != nil || src != loginLegacyHos {
+		t.Fatalf("the old binary name should stay as before, got %+v %v", g, src)
+	}
+}
+
+func TestLoginGateRefusesThenAdmitsByTokenCookieOrBearer(t *testing.T) {
+	s, _ := newTestServer(t)
+	g, _ := loginGateFor("100.64.0.5", 7777, "/", func(k string) string {
+		if k == loginTokenEnv {
+			return "secret-token"
+		}
+		return ""
+	}, "hos-code")
+	s.login = g
+
+	serve := func(req *http.Request) *httptest.ResponseRecorder {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, req)
+		return rec
+	}
+
+	if rec := serve(httptest.NewRequest(http.MethodGet, "/api/meta", nil)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("api without login = %d", rec.Code)
+	}
+	page := httptest.NewRequest(http.MethodGet, "/?path=main.go", nil)
+	page.Header.Set("Accept", "text/html")
+	rec := serve(page)
+	body, _ := io.ReadAll(rec.Body)
+	if rec.Code != http.StatusUnauthorized || !strings.Contains(string(body), `name="token"`) || !strings.Contains(string(body), `value="main.go"`) {
+		t.Fatalf("page without login = %d %s", rec.Code, body)
+	}
+	if rec := serve(httptest.NewRequest(http.MethodGet, "/static/favicon.svg?token=wrong", nil)); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("wrong token = %d", rec.Code)
+	}
+	post := httptest.NewRequest(http.MethodPost, "/api/git/push?token=secret-token", nil)
+	if rec := serve(post); rec.Code != http.StatusUnauthorized {
+		t.Fatalf("a token in the query must not admit a POST, got %d", rec.Code)
+	}
+
+	rec = serve(httptest.NewRequest(http.MethodGet, "/?path=main.go&token=secret-token", nil))
+	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/?path=main.go" {
+		t.Fatalf("token login = %d %q", rec.Code, rec.Header().Get("Location"))
+	}
+	cookies := rec.Result().Cookies()
+	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].Value == "secret-token" {
+		t.Fatalf("cookie = %+v", cookies)
+	}
+
+	withCookie := httptest.NewRequest(http.MethodGet, "/api/meta", nil)
+	withCookie.AddCookie(cookies[0])
+	if rec := serve(withCookie); rec.Code != http.StatusOK {
+		t.Fatalf("cookie login = %d", rec.Code)
+	}
+	bearer := httptest.NewRequest(http.MethodGet, "/api/meta", nil)
+	bearer.Header.Set("Authorization", "Bearer secret-token")
+	if rec := serve(bearer); rec.Code != http.StatusOK {
+		t.Fatalf("bearer login = %d", rec.Code)
+	}
+}
+
+func TestIndexServesOnlyLocalAssets(t *testing.T) {
+	s, _ := newTestServer(t)
+	rec := httptest.NewRecorder()
+	s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+	body := rec.Body.String()
+	for _, banned := range []string{"px0.ai", "fonts.googleapis.com", "fonts.gstatic.com", "cdn.jsdelivr.net", "https://"} {
+		if banned == "https://" {
+			body = strings.ReplaceAll(body, "https://github.com/Harinder441/hos-code", "")
+		}
+		if strings.Contains(body, banned) {
+			t.Fatalf("index.html still references %s", banned)
+		}
+	}
+	for _, asset := range []string{"/static/favicon.svg", "/static/vendor/mermaid-12.0.0.min.js"} {
+		rec := httptest.NewRecorder()
+		s.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, asset, nil))
+		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
+			t.Fatalf("%s = %d (%d bytes)", asset, rec.Code, rec.Body.Len())
+		}
+	}
+}

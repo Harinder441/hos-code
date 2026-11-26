@@ -32,18 +32,15 @@ type WorkspaceSession struct {
 	Drafts   []prComment  `json:"drafts,omitempty"`
 }
 
-// sessionFilePath returns the path to the JSON file where workspace session state is saved.
-// It uses XDG_STATE_HOME/px0/sessions if available, falling back to ~/.px0/sessions or
-// os.TempDir()/px0-sessions. The file name is derived from the base path or an 8-byte
-// SHA-256 hash of the cleaned workspace root path.
+// sessionFilePath is <state dir>/sessions/<base path or 8-byte hash of the root>.json.
 func sessionFilePath(basePath, root string) string {
 	dir := ""
-	if xdg := os.Getenv("XDG_STATE_HOME"); xdg != "" {
-		dir = filepath.Join(xdg, "px0", "sessions")
-	} else if home, err := os.UserHomeDir(); err == nil && home != "" {
-		dir = filepath.Join(home, ".px0", "sessions")
+	if xdg := xdgAppDir("XDG_STATE_HOME"); xdg != "" {
+		dir = filepath.Join(xdg, "sessions")
+	} else if home := homeAppDir(); home != "" {
+		dir = filepath.Join(home, "sessions")
 	} else {
-		dir = filepath.Join(os.TempDir(), "px0-sessions")
+		dir = filepath.Join(os.TempDir(), appName+"-sessions")
 	}
 
 	key := ""

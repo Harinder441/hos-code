@@ -1,7 +1,7 @@
 .git
 dist/
 bench-repos/
-px0
+hos-code
 *.test
 *.prof
 *.out

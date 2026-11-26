@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"os"
 
-	itbl "px0/internal/table"
+	itbl "hos-code/internal/table"
 )
 
 const (

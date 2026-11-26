@@ -15,23 +15,19 @@ endif
 # Clean leading 'v' from version string if present
 CLEAN_VERSION := $(patsubst v%,%,$(TARGET_VERSION))
 
-POSTHOG_KEY ?= $(PX0_POSTHOG_KEY)
 LDFLAGS := -s -w
-ifneq ($(strip $(POSTHOG_KEY)),)
-  LDFLAGS += -X main.posthogKey=$(strip $(POSTHOG_KEY))
-endif
 
 all: build
 
 help:
-	@echo "px0 make targets:"
-	@echo "  make build             - build px0 binary for current platform (optional: POSTHOG_KEY=phc_...)"
+	@echo "hos-code make targets:"
+	@echo "  make build             - build the hos-code binary for this platform"
 	@echo "  make web               - bundle web assets (JS/CSS/themes)"
 	@echo "  make test              - run go test suite"
 	@echo "  make test-short        - run fast unit tests (short mode)"
 	@echo "  make check             - bundle web assets and run fast test suite"
-	@echo "  make dist              - compile cross-platform binaries into dist/"
-	@echo "  make publish <version> - bump VERSION, commit, tag, and build dist binaries"
+	@echo "  make dist              - build release archives (binary + licences) into dist/"
+	@echo "  make publish <version> - bump VERSION, commit, tag, and build dist archives"
 	@echo "  make clean             - remove build artifacts"
 
 web:
@@ -39,9 +35,13 @@ web:
 	@node ./scripts/build-web.js
 
 build: web
-	@echo "Building px0 for local system..."
-	go build -trimpath -ldflags="$(LDFLAGS)" -o px0 .
-	@echo "Built ./px0 ($$(du -h px0 | cut -f1))"
+	@echo "Building hos-code for local system..."
+	go build -trimpath -ldflags="$(LDFLAGS)" -o hos-code .
+	@ln -sf hos-code px0 # until the brain's land script installs hos-code by name
+	@echo "Built ./hos-code ($$(du -h hos-code | cut -f1))"
+
+dist:
+	@./build.sh
 
 test: web
 	go test -v .
@@ -77,10 +77,9 @@ publish:
 	@echo "✓ Successfully prepared release v$(CLEAN_VERSION) and updated dist/!"
 	@echo "Tag v$(CLEAN_VERSION) has been created."
 	@echo ""
-	@echo "To publish to GitHub and trigger release workflow, run:"
-	@echo "  git push origin master --tags"
+	@echo "The Release build workflow (run by hand) rebuilds these archives; nothing is published automatically."
 
 clean:
-	rm -f px0 web/app.js
+	rm -f hos-code px0 web/app.js
 	touch web/app.js
 	rm -rf dist/

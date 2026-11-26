@@ -82,7 +82,7 @@ func computeDiffBase(worktree, srcRepo, token string, target PRTarget, baseRef s
 	}
 	diffBase = "HEAD"
 	var fetchErr string
-	baseRefspec := fmt.Sprintf("refs/heads/%s:refs/px0/base/%d", baseRef, num)
+	baseRefspec := fmt.Sprintf("refs/heads/%s:refs/hos-code/base/%d", baseRef, num)
 	baseRemote := "origin"
 	if srcRepo == "" {
 		baseRemote = fmt.Sprintf("https://github.com/%s/%s.git", target.Owner, target.Repo)
@@ -92,7 +92,7 @@ func computeDiffBase(worktree, srcRepo, token string, target PRTarget, baseRef s
 		if fetchErr == "" {
 			fetchErr = err.Error()
 		}
-	} else if mb := gitMergeBase(worktree, "HEAD", fmt.Sprintf("refs/px0/base/%d", num)); mb != "" {
+	} else if mb := gitMergeBase(worktree, "HEAD", fmt.Sprintf("refs/hos-code/base/%d", num)); mb != "" {
 		diffBase = mb
 	}
 	if diffBase == "HEAD" && srcRepo != "" {
@@ -106,7 +106,7 @@ func computeDiffBase(worktree, srcRepo, token string, target PRTarget, baseRef s
 		if fetchErr != "" {
 			diffBaseWarning = fmt.Sprintf("%s (%s)", diffBaseWarning, fetchErr)
 		}
-		fmt.Fprintln(os.Stderr, "px0: warning:", diffBaseWarning)
+		fmt.Fprintln(os.Stderr, appName+": warning:", diffBaseWarning)
 		if onProgress != nil {
 			onProgress("Warning: " + diffBaseWarning)
 		}
@@ -131,7 +131,7 @@ func checkoutPR(ctx context.Context, provider GitProvider, target PRTarget, cwd 
 		return nil, err
 	}
 
-	tmp, err := os.MkdirTemp("", "px0-pr-*")
+	tmp, err := os.MkdirTemp("", appName+"-pr-*")
 	if err != nil {
 		return nil, err
 	}
@@ -161,12 +161,12 @@ func checkoutPR(ctx context.Context, provider GitProvider, target PRTarget, cwd 
 		if onProgress != nil {
 			onProgress(fmt.Sprintf("Fetching PR #%d head and preparing worktree...", num))
 		}
-		headRefspec := fmt.Sprintf("refs/pull/%d/head:refs/px0/pr/%d", num, num)
+		headRefspec := fmt.Sprintf("refs/pull/%d/head:refs/hos-code/pr/%d", num, num)
 		if out, err := exec.Command("git", "-C", srcRepo, "fetch", "--no-tags", "origin", headRefspec).CombinedOutput(); err != nil {
 			cleanup()
 			return nil, fmt.Errorf("git fetch PR head: %w: %s", err, strings.TrimSpace(string(out)))
 		}
-		if out, err := exec.Command("git", "-C", srcRepo, "worktree", "add", "--detach", tmp, fmt.Sprintf("refs/px0/pr/%d", num)).CombinedOutput(); err != nil {
+		if out, err := exec.Command("git", "-C", srcRepo, "worktree", "add", "--detach", tmp, fmt.Sprintf("refs/hos-code/pr/%d", num)).CombinedOutput(); err != nil {
 			cleanup()
 			return nil, fmt.Errorf("git worktree add: %w: %s", err, strings.TrimSpace(string(out)))
 		}
@@ -214,8 +214,8 @@ func (p *prSession) Close() {
 	}
 	if p.srcRepo != "" {
 		exec.Command("git", "-C", p.srcRepo, "worktree", "remove", "--force", p.worktree).Run()
-		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/px0/pr/%d", p.meta.Number)).Run()
-		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/px0/base/%d", p.meta.Number)).Run()
+		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/hos-code/pr/%d", p.meta.Number)).Run()
+		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/hos-code/base/%d", p.meta.Number)).Run()
 	}
 	os.RemoveAll(p.worktree)
 }
@@ -281,7 +281,7 @@ func (p *prSession) writeScopeFile(name, content string) string {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.scopeDir == "" {
-		dir, err := os.MkdirTemp("", "px0-prdiff-*")
+		dir, err := os.MkdirTemp("", appName+"-prdiff-*")
 		if err != nil {
 			return ""
 		}
@@ -325,7 +325,7 @@ func (p *prSession) Pull() (info string, err error) {
 	// the remote that clone can already authenticate to.
 	newRef := "FETCH_HEAD"
 	if srcRepo != "" && token == "" {
-		newRef = fmt.Sprintf("refs/px0/pr/%d", num)
+		newRef = fmt.Sprintf("refs/hos-code/pr/%d", num)
 		headRefspec := fmt.Sprintf("+refs/pull/%d/head:%s", num, newRef)
 		if out, err := exec.Command("git", "-C", srcRepo, "fetch", "--no-tags", "origin", headRefspec).CombinedOutput(); err != nil {
 			return "", fmt.Errorf("git fetch PR head: %w: %s", err, strings.TrimSpace(string(out)))
@@ -701,7 +701,7 @@ func (s *Server) handlePRSubmit(w http.ResponseWriter, r *http.Request) {
 
 // handleLaunchPR lets an already-running px0 open another PR without
 // disturbing its own session: it re-execs itself as a brand new process on
-// a new port with "px0 -y <url>". The call returns as soon as the child starts.
+// a new port with "hos-code -y <url>". The call returns as soon as the child starts.
 func (s *Server) handleLaunchPR(w http.ResponseWriter, r *http.Request) {
 	if !localPost(w, r) {
 		return

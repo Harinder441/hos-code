@@ -1,4 +1,5 @@
 // web/src/main.js
+import './storage-migrate.js';
 import { $, S, api, applyKeyLabels, doc_ } from './state.js';
 import { measure, layout, render, initRenderer, updateEditorOptionControls } from './renderer.js';
 import { initTabs, openFile, restoreWorkspaceTabs, switchTab } from './tabs.js';
@@ -94,7 +95,7 @@ async function openPath(target, line) {
     initTheme();
 
     // Restore word wrap (default ON)
-    const wrapPref = localStorage.getItem('px0.wrap');
+    const wrapPref = localStorage.getItem('hos-code.wrap');
     S.wrap = wrapPref !== null ? wrapPref === 'true' : true;
     document.body.classList.toggle('word-wrap', S.wrap);
 
@@ -103,9 +104,9 @@ async function openPath(target, line) {
     document.body.classList.remove('hide-lines');
 
     // Restore Markdown preview (default ON)
-    const mdPref = localStorage.getItem('px0.mdPreview');
+    const mdPref = localStorage.getItem('hos-code.mdPreview');
     S.mdPreview = mdPref !== null ? mdPref === 'true' : true;
-    const tablePref = localStorage.getItem('px0.tablePreview');
+    const tablePref = localStorage.getItem('hos-code.tablePreview');
     S.tablePreview = tablePref !== null ? tablePref === 'true' : true;
 
     updateEditorOptionControls();
@@ -120,7 +121,7 @@ async function openPath(target, line) {
   updateSidebarToggleState();
   initPR();
   initSnag();
-  document.title = S.meta.name + ' - px0';
+  document.title = S.meta.name + ' - hos-code';
   $('#root-name').textContent = S.meta.name;
   $('#root-name').title = S.meta.root;
   if (S.meta.version) {
@@ -129,7 +130,7 @@ async function openPath(target, line) {
     const stVerEl = $('#st-ver');
     if (stVerEl) {
       stVerEl.textContent = 'v' + S.meta.version;
-      stVerEl.title = `px0 v${S.meta.version} (Click for shortcuts & help)`;
+      stVerEl.title = `hos-code v${S.meta.version} (Click for shortcuts & help)`;
     }
   }
   updateStatus();

@@ -180,7 +180,7 @@ func (tm *threadManager) load() {
 			if tr.Running {
 				tr.Running = false
 				if tr.Error == "" {
-					tr.Error = "interrupted: px0 exited before this reply finished"
+					tr.Error = "interrupted: hos-code exited before this reply finished"
 				}
 			}
 		}

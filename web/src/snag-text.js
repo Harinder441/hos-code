@@ -8,7 +8,7 @@ function joinPath(root, rel) {
 
 export function snagText(note, meta, path) {
   const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
-  const lines = [note.trim(), '', 'px0 · ' + meta.name];
+  const lines = [note.trim(), '', 'hos-code · ' + meta.name];
   if (path) lines.push('File: ' + joinPath(meta.root, path));
   lines.push('Folder: ' + joinPath(meta.root, dir));
   return lines.join('\n');

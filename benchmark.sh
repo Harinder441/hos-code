@@ -7,7 +7,7 @@ set -u
 unalias find 2>/dev/null || true
 unset -f find 2>/dev/null || true
 
-BIN=${BIN:-./px0}
+BIN=${BIN:-./hos-code}
 if [ -z "${CORPUS:-}" ]; then
   if [ -d "./bench-repos" ]; then
     CORPUS="./bench-repos"
@@ -78,7 +78,7 @@ examples:
   RUNS=20 ./benchmark.sh bench-repos/redis
 
 environment:
-  BIN=./px0             binary to measure
+  BIN=./hos-code        binary to measure
   CORPUS=./bench-repos  where the corpus lives
   PORT=7900             first port to use, incremented per repo
   RUNS=5                requests per timing, the fastest is reported

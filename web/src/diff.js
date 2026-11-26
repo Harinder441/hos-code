@@ -24,12 +24,12 @@ let shown = null; // doc the diff view is currently showing, null while hidden
 // picked (split vs unified) is remembered globally as the default for the
 // next file entering diff view.
 export function setLayoutPref(mode) {
-  try { localStorage.setItem('px0.diffLayout', mode); } catch {}
+  try { localStorage.setItem('hos-code.diffLayout', mode); } catch {}
 }
 
 export function layoutPref() {
   if (isPhone()) return 'unified'; // no room for two columns on a phone
-  try { return localStorage.getItem('px0.diffLayout') || 'split'; } catch { return 'split'; }
+  try { return localStorage.getItem('hos-code.diffLayout') || 'split'; } catch { return 'split'; }
 }
 
 function diffMode(d = doc_()) {

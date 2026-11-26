@@ -1,7 +1,8 @@
 dist/
 bench-repos/
-px0
-px0.exe
+/hos-code
+/hos-code.exe
+/px0
 *.test
 *.prof
 
@@ -21,8 +22,6 @@ Thumbs.db
 build/
 web/app.js
 web/vendor/*.min.js
-web/vendor/*.min.js.gz
 
 # Logs
 *.log
-px0
