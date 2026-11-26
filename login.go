@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 )
@@ -41,7 +42,7 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// Launchers from before the rename (run as px0, or an hos passing only HOS_PX0_TOKEN) cannot add a login token to their links yet.
+// Launchers from before the rename run the binary as px0 and cannot add a login token to their links yet.
 func loginGateFor(host string, port int, basePath string, getenv func(string) string, invokedAs string) (*loginGate, loginSource) {
 	if isLoopbackHost(host) {
 		return nil, loginOff
@@ -49,7 +50,7 @@ func loginGateFor(host string, port int, basePath string, getenv func(string) st
 	token := strings.TrimSpace(getenv(loginTokenEnv))
 	src := loginFromEnv
 	if token == "" {
-		if strings.TrimSuffix(invokedAs, ".exe") == legacyName || (getenv("HOS_PX0_TOKEN") != "" && getenv("HOS_CODE_TOKEN") == "") {
+		if strings.TrimSuffix(invokedAs, ".exe") == legacyName {
 			return nil, loginLegacyHos
 		}
 		b := make([]byte, 24)
@@ -87,7 +88,11 @@ func (g *loginGate) admit(w http.ResponseWriter, r *http.Request) bool {
 	if t := q.Get("token"); t != "" && g.matches(t) && (r.Method == http.MethodGet || r.Method == http.MethodHead) {
 		http.SetCookie(w, &http.Cookie{Name: g.cookie, Value: g.value, Path: g.path, HttpOnly: true, SameSite: http.SameSiteLaxMode, MaxAge: 30 * 24 * 3600})
 		q.Del("token")
-		next := url.URL{Path: r.URL.Path, RawQuery: q.Encode()}
+		clean := path.Clean("/" + r.URL.Path)
+		if strings.HasSuffix(r.URL.Path, "/") && clean != "/" {
+			clean += "/"
+		}
+		next := url.URL{Path: clean, RawQuery: q.Encode()}
 		http.Redirect(w, r, next.RequestURI(), http.StatusSeeOther)
 		return false
 	}

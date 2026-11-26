@@ -82,7 +82,7 @@ func loadHosLink(getenv func(string) string, envFile string) *hosLink {
 // hos's origin, session or token.
 func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 	if s.hos == nil {
-		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or"+hosEnvPath())
+		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or "+hosEnvPath())
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -183,7 +183,7 @@ func (s *Server) postHosReview(ctx context.Context, payload map[string]any, out 
 // handleHosReview turns a review session on or off; while on, new drafts also go to hos and never to GitHub.
 func (s *Server) handleHosReview(w http.ResponseWriter, r *http.Request) {
 	if s.hos == nil {
-		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or"+hosEnvPath())
+		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or "+hosEnvPath())
 		return
 	}
 	if !s.prOrFail(w) {

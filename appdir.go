@@ -50,12 +50,24 @@ func appDir(base, name, legacy string) string {
 }
 
 func migrateAppDir(old, dir string) string {
+	_, oldErr := os.Lstat(old)
 	if _, err := os.Lstat(dir); err == nil {
+		if oldErr == nil && !sameDir(old, dir) {
+			fmt.Fprintf(notesOut, "%s: both %s and %s exist; using %s and leaving %s as it is\n", appName, old, dir, dir, old)
+		}
 		return dir
 	}
-	info, err := os.Lstat(old)
-	if err != nil || !info.IsDir() {
+	if oldErr != nil {
 		return dir
+	}
+	info, err := os.Stat(old)
+	if err != nil || !info.IsDir() {
+		fmt.Fprintf(notesOut, "%s: %s is not a folder, so it was not moved\n", appName, old)
+		return dir
+	}
+	if l, err := os.Lstat(old); err == nil && l.Mode()&os.ModeSymlink != 0 {
+		fmt.Fprintf(notesOut, "%s: %s is a link, so it was not moved; using it\n", appName, old)
+		return old
 	}
 	if err := os.Rename(old, dir); err != nil {
 		fmt.Fprintf(notesOut, "%s: could not move %s to %s (%v); still using %s\n", appName, old, dir, err, old)
@@ -67,6 +79,12 @@ func migrateAppDir(old, dir string) string {
 		fmt.Fprintf(notesOut, "%s: moved %s to %s and linked the old path to it\n", appName, old, dir)
 	}
 	return dir
+}
+
+func sameDir(a, b string) bool {
+	fa, errA := os.Stat(a)
+	fb, errB := os.Stat(b)
+	return errA == nil && errB == nil && os.SameFile(fa, fb)
 }
 
 func getenvCompat(getenv func(string) string, name, old string) string {

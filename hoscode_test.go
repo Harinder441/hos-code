@@ -73,6 +73,51 @@ func TestAppDirLeavesAnExistingNewFolderAlone(t *testing.T) {
 	}
 }
 
+func TestAppDirUsesALinkedOldFolderInPlace(t *testing.T) {
+	notes := quietNotes(t)
+	base := t.TempDir()
+	real := filepath.Join(base, "dotfiles", "px0")
+	if err := os.MkdirAll(real, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(real, "settings.json"), []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(real, filepath.Join(base, ".px0")); err != nil {
+		t.Fatal(err)
+	}
+	got := appDir(base, ".hos-code", ".px0")
+	if _, err := os.Stat(filepath.Join(got, "settings.json")); err != nil {
+		t.Fatalf("data behind the link not found via %s: %v", got, err)
+	}
+	if _, err := os.Lstat(filepath.Join(base, ".hos-code")); err == nil {
+		t.Fatalf("a linked old folder should not be moved")
+	}
+	if !strings.Contains(notes.String(), "is a link") {
+		t.Fatalf("no note printed: %q", notes.String())
+	}
+}
+
+func TestAppDirNotesWhenBothFoldersExist(t *testing.T) {
+	notes := quietNotes(t)
+	base := t.TempDir()
+	for _, d := range []string{".px0", ".hos-code"} {
+		if err := os.MkdirAll(filepath.Join(base, d), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(base, d, "settings.json"), []byte(d), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	appDir(base, ".hos-code", ".px0")
+	if !strings.Contains(notes.String(), "both") {
+		t.Fatalf("no note printed: %q", notes.String())
+	}
+	if b, err := os.ReadFile(filepath.Join(base, ".px0", "settings.json")); err != nil || string(b) != ".px0" {
+		t.Fatalf("old data must stay, got %q %v", b, err)
+	}
+}
+
 func TestSettingsPathMigratesXDGConfig(t *testing.T) {
 	quietNotes(t)
 	cfg := t.TempDir()
@@ -136,9 +181,9 @@ func TestLoginGateOnlyOffLoopback(t *testing.T) {
 	if g == nil || src != loginFromEnv || g.token != "chosen" {
 		t.Fatalf("env token should be used, got %+v %v", g, src)
 	}
-	legacy := map[string]string{"HOS_PX0_TOKEN": "bridge"}
-	if g, src := loginGateFor("100.64.0.5", 7777, "/", func(k string) string { return legacy[k] }, "hos-code"); g != nil || src != loginLegacyHos {
-		t.Fatalf("an older hos launch should stay as before, got %+v %v", g, src)
+	oldHosEnv := map[string]string{"HOS_URL": "http://127.0.0.1:9", "HOS_PX0_TOKEN": "bridge"}
+	if g, src := loginGateFor("100.64.0.5", 7777, "/", func(k string) string { return oldHosEnv[k] }, "hos-code"); g == nil || src != loginGenerated {
+		t.Fatalf("the new name with only HOS_PX0_TOKEN set must still require a login, got %+v %v", g, src)
 	}
 	if g, src := loginGateFor("100.64.0.5", 7777, "/", none, "px0"); g != nil || src != loginLegacyHos {
 		t.Fatalf("the old binary name should stay as before, got %+v %v", g, src)
@@ -183,6 +228,11 @@ func TestLoginGateRefusesThenAdmitsByTokenCookieOrBearer(t *testing.T) {
 	if rec.Code != http.StatusSeeOther || rec.Header().Get("Location") != "/?path=main.go" {
 		t.Fatalf("token login = %d %q", rec.Code, rec.Header().Get("Location"))
 	}
+	rec = serve(httptest.NewRequest(http.MethodGet, "//evil.example/x?token=secret-token", nil))
+	if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || loc != "/evil.example/x" {
+		t.Fatalf("token login must redirect on-site, got %d %q", rec.Code, loc)
+	}
+	rec = serve(httptest.NewRequest(http.MethodGet, "/?path=main.go&token=secret-token", nil))
 	cookies := rec.Result().Cookies()
 	if len(cookies) != 1 || !cookies[0].HttpOnly || cookies[0].Value == "secret-token" {
 		t.Fatalf("cookie = %+v", cookies)

@@ -210,7 +210,7 @@ The pinned Mermaid browser runtime is embedded gzipped (`web/vendor/mermaid-12.0
 
 ### Login on a network address
 
-On a loopback bind there is no login. On any other bind (a Tailscale address, `0.0.0.0`) every request needs the login token (`login.go`): `?token=<token>` on a GET sets an HttpOnly, SameSite=Lax cookie named per port and redirects to the same URL without the token; scripts may send `Authorization: Bearer <token>`. The token comes from `HOS_CODE_LOGIN_TOKEN`, or is generated at start and printed in the URL. hos passes it when it starts hos-code and adds it to the links it hands out. A binary still run as `px0`, or started by an hos that passes only `HOS_PX0_TOKEN`, keeps the old no-login behaviour and prints a warning; that path goes once hos and the brain scripts use the new name.
+On a loopback bind there is no login. On any other bind (a Tailscale address, `0.0.0.0`) every request needs the login token (`login.go`): `?token=<token>` on a GET sets an HttpOnly, SameSite=Lax cookie named per port and redirects to the same URL without the token; scripts may send `Authorization: Bearer <token>`. The token comes from `HOS_CODE_LOGIN_TOKEN`, or is generated at start and printed in the URL. hos passes it when it starts hos-code and adds it to the links it hands out. A binary still run as `px0` keeps the old no-login behaviour and prints a warning; that path goes once hos and the brain scripts use the new name.
 
 ### Binary Size Optimization & Packaging Footprint
 
