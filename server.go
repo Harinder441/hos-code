@@ -288,7 +288,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if uri == "" {
 				uri = "/"
 			}
-			uiStatus(role, "http", fmt.Sprintf("%s %s · %d  (%s)", r.Method, uri, status, dur), 0, os.Stdout)
+			uiStatus(role, "http", fmt.Sprintf("%s %s · %d  (%s)", r.Method, redactLoginURI(uri), status, dur), 0, os.Stdout)
 		}()
 	}
 

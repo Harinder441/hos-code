@@ -37,7 +37,6 @@ web:
 build: web
 	@echo "Building hos-code for local system..."
 	go build -trimpath -ldflags="$(LDFLAGS)" -o hos-code .
-	@ln -sf hos-code px0 # until the brain's land script installs hos-code by name
 	@echo "Built ./hos-code ($$(du -h hos-code | cut -f1))"
 
 dist:
@@ -80,6 +79,6 @@ publish:
 	@echo "The Release build workflow (run by hand) rebuilds these archives; nothing is published automatically."
 
 clean:
-	rm -f hos-code px0 web/app.js
+	rm -f hos-code web/app.js
 	touch web/app.js
 	rm -rf dist/

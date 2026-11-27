@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -169,25 +170,65 @@ func TestLoginGateOnlyOffLoopback(t *testing.T) {
 	quietNotes(t)
 	none := func(string) string { return "" }
 	for _, host := range []string{"127.0.0.1", "::1", "localhost"} {
-		if g, src := loginGateFor(host, 7777, "/", none, "hos-code"); g != nil || src != loginOff {
+		if g, src := loginGateFor(host, 7777, "/", none); g != nil || src != loginOff {
 			t.Fatalf("%s: loopback should need no login", host)
 		}
 	}
-	g, src := loginGateFor("100.64.0.5", 7777, "/", none, "hos-code")
+	g, src := loginGateFor("100.64.0.5", 7777, "/", none)
 	if g == nil || src != loginGenerated || len(g.token) < 32 {
 		t.Fatalf("tailnet bind without a token should generate one, got %+v %v", g, src)
 	}
 	env := map[string]string{loginTokenEnv: "chosen"}
-	g, src = loginGateFor("0.0.0.0", 7777, "/", func(k string) string { return env[k] }, "px0")
+	g, src = loginGateFor("0.0.0.0", 7777, "/", func(k string) string { return env[k] })
 	if g == nil || src != loginFromEnv || g.token != "chosen" {
 		t.Fatalf("env token should be used, got %+v %v", g, src)
 	}
 	oldHosEnv := map[string]string{"HOS_URL": "http://127.0.0.1:9", "HOS_PX0_TOKEN": "bridge"}
-	if g, src := loginGateFor("100.64.0.5", 7777, "/", func(k string) string { return oldHosEnv[k] }, "hos-code"); g == nil || src != loginGenerated {
-		t.Fatalf("the new name with only HOS_PX0_TOKEN set must still require a login, got %+v %v", g, src)
+	if g, src := loginGateFor("100.64.0.5", 7777, "/", func(k string) string { return oldHosEnv[k] }); g == nil || src != loginGenerated {
+		t.Fatalf("only HOS_PX0_TOKEN set must still require a login, got %+v %v", g, src)
 	}
-	if g, src := loginGateFor("100.64.0.5", 7777, "/", none, "px0"); g != nil || src != loginLegacyHos {
-		t.Fatalf("the old binary name should stay as before, got %+v %v", g, src)
+}
+
+func TestLoginTokenIsNotPassedToChildProcesses(t *testing.T) {
+	t.Setenv(loginTokenEnv, "child-must-not-see")
+	g, src := loginGateFromEnv("100.64.0.5", 7777, "/")
+	if g == nil || src != loginFromEnv || g.token != "child-must-not-see" {
+		t.Fatalf("the env token should still be used, got %+v %v", g, src)
+	}
+	if _, ok := os.LookupEnv(loginTokenEnv); ok {
+		t.Fatal("the login token should be removed from the environment after it is read")
+	}
+	out, err := exec.Command("env").Output()
+	if err != nil {
+		t.Skip("env not available")
+	}
+	if strings.Contains(string(out), "child-must-not-see") {
+		t.Fatal("a child process saw the login token")
+	}
+	if g, src := loginGateFromEnv("100.64.0.5", 7777, "/"); g == nil || src != loginGenerated {
+		t.Fatalf("a generated token should not be written back to the environment, got %+v %v", g, src)
+	}
+	if _, ok := os.LookupEnv(loginTokenEnv); ok {
+		t.Fatal("a generated token should not be written to the environment")
+	}
+}
+
+func TestVerboseRequestLogRedactsLoginSecrets(t *testing.T) {
+	cases := map[string]string{
+		"/?path=a.go&token=abc123":        "/?path=a.go&token=REDACTED",
+		"/rev/?token=abc123":              "/rev/?token=REDACTED",
+		"/rev/view/k/deadbeef/doc/a.html": "/rev/view/k/REDACTED/doc/a.html",
+		"/view/k/deadbeef":                "/view/k/REDACTED",
+		"/api/files?path=x":               "/api/files?path=x",
+		"/":                               "/",
+	}
+	for in, want := range cases {
+		if got := redactLoginURI(in); got != want {
+			t.Fatalf("redactLoginURI(%q) = %q, want %q", in, got, want)
+		}
+	}
+	if got := redactLoginURI("/?token=abc123;x"); strings.Contains(got, "abc123") {
+		t.Fatalf("an unparsable query must not leak the token, got %q", got)
 	}
 }
 
@@ -198,7 +239,7 @@ func TestLoginGateRefusesThenAdmitsByTokenCookieOrBearer(t *testing.T) {
 			return "secret-token"
 		}
 		return ""
-	}, "hos-code")
+	})
 	s.login = g
 
 	serve := func(req *http.Request) *httptest.ResponseRecorder {
@@ -291,7 +332,7 @@ func TestViewUnderLoginLoadsRelativeAssetsWithoutTheCookie(t *testing.T) {
 			return "secret-token"
 		}
 		return ""
-	}, "hos-code")
+	})
 	s.login = g
 	srv := httptest.NewServer(s)
 	defer srv.Close()

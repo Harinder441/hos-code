@@ -147,10 +147,7 @@ func main() {
 
 	_, portStr, _ := net.SplitHostPort(addr)
 	boundPort, _ := strconv.Atoi(portStr)
-	login, loginSrc := loginGateFor(*host, boundPort, configuredBasePath, os.Getenv, filepath.Base(os.Args[0]))
-	if loginSrc == loginGenerated {
-		_ = os.Setenv(loginTokenEnv, login.token)
-	}
+	login, loginSrc := loginGateFromEnv(*host, boundPort, configuredBasePath)
 
 	pxSrv := NewServer(ix, lsp, configuredBasePath)
 	pxSrv.tel = tel
@@ -193,8 +190,6 @@ func main() {
 		uiKV("login", "token required ("+loginTokenEnv+")", 11, os.Stdout)
 	case loginGenerated:
 		uiKV("login", "token required (in the url above; set "+loginTokenEnv+" to choose it)", 11, os.Stdout)
-	case loginLegacyHos:
-		uiStatus("warn", "no login on this network address", "started under the old px0 name; run it as "+appName+" or set "+loginTokenEnv, 0, os.Stderr)
 	}
 	uiHint("ctrl-c to stop", os.Stdout)
 

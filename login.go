@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -23,7 +24,6 @@ const (
 	loginOff loginSource = iota
 	loginFromEnv
 	loginGenerated
-	loginLegacyHos
 )
 
 type loginGate struct {
@@ -43,17 +43,13 @@ func isLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
-// Launchers from before the rename run the binary as px0 and cannot add a login token to their links yet.
-func loginGateFor(host string, port int, basePath string, getenv func(string) string, invokedAs string) (*loginGate, loginSource) {
+func loginGateFor(host string, port int, basePath string, getenv func(string) string) (*loginGate, loginSource) {
 	if isLoopbackHost(host) {
 		return nil, loginOff
 	}
 	token := strings.TrimSpace(getenv(loginTokenEnv))
 	src := loginFromEnv
 	if token == "" {
-		if strings.TrimSuffix(invokedAs, ".exe") == legacyName {
-			return nil, loginLegacyHos
-		}
 		b := make([]byte, 24)
 		if _, err := rand.Read(b); err != nil {
 			panic(err)
@@ -68,6 +64,36 @@ func loginGateFor(host string, port int, basePath string, getenv func(string) st
 		path:   cleanBasePath(basePath),
 		view:   derive(token, appName+" view"),
 	}, src
+}
+
+// Read once, then dropped from the environment so git, language servers, installers and the browser opener never inherit it.
+func loginGateFromEnv(host string, port int, basePath string) (*loginGate, loginSource) {
+	g, src := loginGateFor(host, port, basePath, os.Getenv)
+	_ = os.Unsetenv(loginTokenEnv)
+	return g, src
+}
+
+func redactLoginURI(uri string) string {
+	p, q, hasQuery := strings.Cut(uri, "?")
+	if before, rest, ok := strings.Cut(p, "/view/k/"); ok {
+		if _, tail, ok := strings.Cut(rest, "/"); ok {
+			p = before + "/view/k/REDACTED/" + tail
+		} else {
+			p = before + "/view/k/REDACTED"
+		}
+	}
+	if !hasQuery {
+		return p
+	}
+	vals, err := url.ParseQuery(q)
+	if err != nil {
+		return p + "?REDACTED"
+	}
+	if _, ok := vals["token"]; ok {
+		vals.Set("token", "REDACTED")
+		q = vals.Encode()
+	}
+	return p + "?" + q
 }
 
 func derive(token, purpose string) string {
