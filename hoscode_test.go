@@ -166,12 +166,18 @@ func TestLoadHosLinkReadsNewTokenName(t *testing.T) {
 	}
 }
 
-func TestLoginGateOnlyOffLoopback(t *testing.T) {
+func TestLoginGateOffLoopbackOrWithAToken(t *testing.T) {
 	quietNotes(t)
 	none := func(string) string { return "" }
 	for _, host := range []string{"127.0.0.1", "::1", "localhost"} {
 		if g, src := loginGateFor(host, 7777, "/", none); g != nil || src != loginOff {
 			t.Fatalf("%s: loopback should need no login", host)
+		}
+	}
+	chosen := map[string]string{loginTokenEnv: "from-hos"}
+	for _, host := range []string{"127.0.0.1", "::1", "localhost"} {
+		if g, src := loginGateFor(host, 7777, "/", func(k string) string { return chosen[k] }); g == nil || src != loginFromEnv || g.token != "from-hos" {
+			t.Fatalf("%s: a token from hos must keep the login on loopback, got %+v %v", host, g, src)
 		}
 	}
 	g, src := loginGateFor("100.64.0.5", 7777, "/", none)

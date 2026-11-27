@@ -44,10 +44,10 @@ func isLoopbackHost(host string) bool {
 }
 
 func loginGateFor(host string, port int, basePath string, getenv func(string) string) (*loginGate, loginSource) {
-	if isLoopbackHost(host) {
+	token := strings.TrimSpace(getenv(loginTokenEnv))
+	if token == "" && isLoopbackHost(host) {
 		return nil, loginOff
 	}
-	token := strings.TrimSpace(getenv(loginTokenEnv))
 	src := loginFromEnv
 	if token == "" {
 		b := make([]byte, 24)
