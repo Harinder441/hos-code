@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -98,4 +99,18 @@ func getenvCompat(getenv func(string) string, name, old string) string {
 		}
 	}
 	return v
+}
+
+// hos passes NAME_FILE (a 0600 file) instead of NAME, so the secret is not on a tmux command line; NAME still works.
+func withFileEnv(getenv func(string) string) func(string) string {
+	return func(name string) string {
+		if p := strings.TrimSpace(getenv(name + "_FILE")); p != "" {
+			b, err := os.ReadFile(p)
+			if v := strings.TrimSpace(string(b)); err == nil && v != "" {
+				return v
+			}
+			fmt.Fprintf(notesOut, "%s: %s_FILE names no readable value, using %s\n", appName, name, name)
+		}
+		return getenv(name)
+	}
 }

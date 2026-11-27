@@ -217,7 +217,7 @@ func NewServer(ix *Index, lsp *lspManager, basePaths ...string) *Server {
 	if len(basePaths) > 0 && basePaths[0] != "" {
 		bp = cleanBasePath(basePaths[0])
 	}
-	s := &Server{ix: ix, lsp: lsp, diffBase: "HEAD", basePath: bp, mux: http.NewServeMux(), streamsDone: make(chan struct{}), hos: loadHosLink(os.Getenv, hosEnvPath())}
+	s := &Server{ix: ix, lsp: lsp, diffBase: "HEAD", basePath: bp, mux: http.NewServeMux(), streamsDone: make(chan struct{}), hos: loadHosLink(withFileEnv(os.Getenv), hosEnvPath())}
 	s.session = newSessionManager(s.basePath, ix.Root())
 	s.gitWatcher = NewGitWatcher(ix)
 	s.gitWatcher.Start(context.Background())

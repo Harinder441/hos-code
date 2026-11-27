@@ -166,6 +166,41 @@ func TestLoadHosLinkReadsNewTokenName(t *testing.T) {
 	}
 }
 
+func TestTokensComeFromFileVariables(t *testing.T) {
+	quietNotes(t)
+	dir := t.TempDir()
+	bridge, login := filepath.Join(dir, "hos-code.token"), filepath.Join(dir, "hos-code-login.token")
+	for file, value := range map[string]string{bridge: "bridge-from-file\n", login: "login-from-file\n"} {
+		if err := os.WriteFile(file, []byte(value), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("HOS_URL", "http://127.0.0.1:4000")
+	t.Setenv("HOS_CODE_TOKEN_FILE", bridge)
+	t.Setenv(loginTokenEnv+"_FILE", login)
+	ix := NewIndex(t.TempDir())
+	ix.Build()
+	if s := NewServer(ix, nil); s.hos == nil || s.hos.token != "bridge-from-file" {
+		t.Fatalf("the bridge token should come from HOS_CODE_TOKEN_FILE, got %+v", s.hos)
+	}
+	g, src := loginGateFromEnv("127.0.0.1", 7777, "/")
+	if g == nil || src != loginFromEnv || g.token != "login-from-file" {
+		t.Fatalf("the login token should come from HOS_CODE_LOGIN_TOKEN_FILE and keep the login on loopback, got %+v %v", g, src)
+	}
+	if _, ok := os.LookupEnv(loginTokenEnv + "_FILE"); ok {
+		t.Fatal("the login token file variable should be dropped after it is read")
+	}
+
+	plain := map[string]string{"HOS_URL": "http://127.0.0.1:4000", "HOS_CODE_TOKEN": "plain", "HOS_CODE_TOKEN_FILE": filepath.Join(dir, "missing")}
+	if got := loadHosLink(withFileEnv(func(k string) string { return plain[k] }), ""); got == nil || got.token != "plain" {
+		t.Fatalf("plain HOS_CODE_TOKEN should still work when the file is missing, got %+v", got)
+	}
+	delete(plain, "HOS_CODE_TOKEN_FILE")
+	if got := loadHosLink(withFileEnv(func(k string) string { return plain[k] }), ""); got == nil || got.token != "plain" {
+		t.Fatalf("plain HOS_CODE_TOKEN should work as before, got %+v", got)
+	}
+}
+
 func TestLoginGateOffLoopbackOrWithAToken(t *testing.T) {
 	quietNotes(t)
 	none := func(string) string { return "" }

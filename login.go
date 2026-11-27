@@ -68,8 +68,9 @@ func loginGateFor(host string, port int, basePath string, getenv func(string) st
 
 // Read once, then dropped from the environment so git, language servers, installers and the browser opener never inherit it.
 func loginGateFromEnv(host string, port int, basePath string) (*loginGate, loginSource) {
-	g, src := loginGateFor(host, port, basePath, os.Getenv)
+	g, src := loginGateFor(host, port, basePath, withFileEnv(os.Getenv))
 	_ = os.Unsetenv(loginTokenEnv)
+	_ = os.Unsetenv(loginTokenEnv + "_FILE")
 	return g, src
 }
 
