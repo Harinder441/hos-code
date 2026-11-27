@@ -1,6 +1,6 @@
 # Operational Guidelines for AI Agents
 
-Welcome agent! This document contains essential instructions and workflows for working productively and quickly in `px0`.
+Welcome agent! This document contains essential instructions and workflows for working productively and quickly in `hos-code`.
 
 ---
 
@@ -15,7 +15,7 @@ To keep iteration fast and avoid unnecessary delays:
 | :--- | :--- | :--- | :--- |
 | **Frontend Check** | `make web-check` or `npm run check` | **<100ms** | Validates JS syntax, relative imports, and runs frontend tests. |
 | **Frontend Bundle** | `make web` or `node scripts/build-web.js` | **<50ms** | Run whenever modifying files under `web/src/`. |
-| **Build Binary** | `make build` | **~2s** | Bundles frontend (`web/app.js`) and compiles local `./px0` binary. |
+| **Build Binary** | `make build` | **~2s** | Bundles frontend (`web/app.js`) and compiles local `./hos-code` binary. |
 | **Fast Verification** | `make check` or `go test -short .` | **~7s** | Runs frontend validation, asset bundling, and fast Go unit tests. |
 | **Full Test Suite** | `make test` or `go test .` | **~20s** | Run once all changes are done; iterate until all tests pass before concluding. |
 
@@ -40,9 +40,9 @@ To keep iteration fast and avoid unnecessary delays:
 
 ## 3. Core Architectural Tenets
 
-1. **Reads First, Edits via Harness**: `px0` is an ultra-fast code reader and reviewer. File modifications are delegated to external coding harnesses (`agent.go`, `thread.go`), never authored directly to disk by `px0` (with the exception of explicit user-initiated Git operations in the sidebar).
+1. **Reads First, Edits via Harness**: `hos-code` is an ultra-fast code reader and reviewer. File modifications are delegated to external coding harnesses (`agent.go`, `thread.go`), never authored directly to disk by `hos-code` (with the exception of explicit user-initiated Git operations in the sidebar).
 2. **Zero Runtime Dependencies**: The output must remain a single, standalone static binary. No CGO, no Node.js runtime requirement for the user, no external databases.
-3. **No Workspace Litter**: `px0` never creates `.px0/` folders or cache files inside a workspace tree. Persistent configuration and thread transcripts live in `$XDG_CONFIG_HOME/px0/` or `~/.px0/`.
+3. **No Workspace Litter**: `hos-code` never creates `.hos-code/` folders or cache files inside a workspace tree. Persistent configuration and thread transcripts live in `$XDG_CONFIG_HOME/hos-code/` or `~/.hos-code/`.
 4. **Fast & Non-Blocking**: Operations must remain responsive. All background tasks, network calls, and git operations must respect timeouts and set `GIT_TERMINAL_PROMPT=0`.
 
 ---

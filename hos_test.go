@@ -64,6 +64,7 @@ func TestHosSnagForwardsToHosWithTheToken(t *testing.T) {
 		gotAuth, gotPath = r.Header.Get("Authorization"), r.URL.Path
 		b, _ := io.ReadAll(r.Body)
 		_ = json.Unmarshal(b, &gotBody)
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusCreated)
 		_, _ = w.Write([]byte(`{"ref":"S42"}`))
 	}))
@@ -74,11 +75,33 @@ func TestHosSnagForwardsToHosWithTheToken(t *testing.T) {
 	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ref":"S42"`) {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
 	}
-	if gotAuth != "Bearer tok" || gotPath != "/px0/snags" {
+	if gotAuth != "Bearer tok" || gotPath != "/hos-code/snags" {
 		t.Fatalf("hos got auth %q path %q", gotAuth, gotPath)
 	}
 	if gotBody["kind"] != "question" || gotBody["text"] != "why is this slow?\n\nFile: /r/a.go" {
 		t.Fatalf("hos got body %v", gotBody)
+	}
+}
+
+func TestHosSnagFallsBackToTheOldRouteOnAnOlderHos(t *testing.T) {
+	var paths []string
+	hos := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.URL.Path != "/px0/snags" {
+			w.Header().Set("Content-Type", "text/html")
+			_, _ = w.Write([]byte("<!doctype html><title>hos</title>"))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_, _ = w.Write([]byte(`{"ref":"S43"}`))
+	}))
+	defer hos.Close()
+	s := hosSnagServer(t, &hosLink{url: hos.URL, token: "tok", client: hos.Client()})
+
+	rec := postSnag(s, "application/json", `{"kind":"task","text":"old hos"}`)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"ref":"S43"`) || strings.Join(paths, " ") != "/hos-code/snags /px0/snags" {
+		t.Fatalf("got %d %s via %v", rec.Code, rec.Body.String(), paths)
 	}
 }
 
@@ -148,7 +171,8 @@ type fakeHosReview struct {
 func (f *fakeHosReview) server(t *testing.T) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/px0/review" || r.Header.Get("Authorization") != "Bearer tok" {
+		w.Header().Set("Content-Type", "application/json")
+		if r.URL.Path != "/hos-code/review" || r.Header.Get("Authorization") != "Bearer tok" {
 			w.WriteHeader(http.StatusTeapot)
 			return
 		}

@@ -1,22 +1,22 @@
 # System Architecture & Runtime Lifecycle
 
-This document describes the high-level architecture, startup pipeline, HTTP server, memory scavenging, and security model of `px0`.
+This document describes the high-level architecture, startup pipeline, HTTP server, memory scavenging, and security model of `hos-code`.
 
 ## 1. High-Level Design Principles
 
-px0 is engineered as an ultra-fast, zero-overhead code exploration console. Its architecture is guided by five foundational tenets:
+hos-code is engineered as an ultra-fast, zero-overhead code exploration console. Its architecture is guided by five foundational tenets:
 
-1. Edits Are Delegated: px0 navigates, searches, and inspects code, and does not author changes itself. There are no save buttons and no endpoint accepts file content. Changes are made by a coding harness px0 dispatches on request, one per non-overlapping line range so several can run at once (see [Harness Editing & Agent Dispatch](agent-editing.md)).
-1. Single Static Binary Footprint: All frontend assets (HTML, CSS, JavaScript, icons, themes) are embedded directly into the Go binary at compile time via `go:embed`. px0 requires no Node.js, Python, or Ruby runtime, no external database, and no CGO dependencies.
+1. Edits Are Delegated: hos-code navigates, searches, and inspects code, and does not author changes itself. There are no save buttons and no endpoint accepts file content. Changes are made by a coding harness hos-code dispatches on request, one per non-overlapping line range so several can run at once (see [Harness Editing & Agent Dispatch](agent-editing.md)).
+1. Single Static Binary Footprint: All frontend assets (HTML, CSS, JavaScript, icons, themes) are embedded directly into the Go binary at compile time via `go:embed`. hos-code requires no Node.js, Python, or Ruby runtime, no external database, and no CGO dependencies.
 1. Sub-Millisecond Responsiveness: The HTTP listener binds, serves the web UI, and opens the default browser in under 1 millisecond. Heavy operations (full directory indexing, git status checks, language server binary discovery) run asynchronously off the critical path.
-1. Stateless in the Workspace: px0 never writes configuration directories, temporary caches, or metadata files (e.g., `.px0/` or `.cache/`) into a workspace. Indexes and caches live in volatile memory. Outside the workspace it keeps only the remembered harness choice and update/telemetry state under `~/.px0/` (or `$XDG_CONFIG_HOME/px0/`).
+1. Stateless in the Workspace: hos-code never writes configuration directories, temporary caches, or metadata files (e.g., `.hos-code/` or `.cache/`) into a workspace. Indexes and caches live in volatile memory. Outside the workspace it keeps only the remembered harness choice and settings, session and telemetry state under `~/.hos-code/` (or `$XDG_CONFIG_HOME/hos-code/`).
 1. Strict Memory Reclamation: Long-lived background processes should not hold idle RAM. When the user finishes a burst of queries, unused pages are proactively returned to the operating system.
 
 The browser's file tabs are managed in `web/src/tabs.js`. Tab context-menu actions and the tab close button share cache cleanup. A bulk close updates the browser view and session once after removing the selected tabs.
 
 ## 2. Startup Pipeline (<1 ms Critical Path)
 
-When `px0` is executed in a terminal (e.g., `px0 .` or `px0 main.go:42`), the initialization flow executes as follows. A file target detects its enclosing project repository (or working directory) as the workspace and is passed to the browser with its relative path and optional line number.
+When `hos-code` is executed in a terminal (e.g., `hos-code .` or `hos-code main.go:42`), the initialization flow executes as follows. A file target detects its enclosing project repository (or working directory) as the workspace and is passed to the browser with its relative path and optional line number.
 
 ```mermaid
 sequenceDiagram
@@ -51,7 +51,7 @@ sequenceDiagram
 
 1. Target Resolution: Directories become workspace roots. For a file target, its repository or project root is detected as the workspace, and its relative path (with optional line number) is retained for the initial browser tab.
 1. Socket Binding: `listen(*host, *port)` binds an ephemeral or user-specified TCP socket immediately.
-1. Network URL Discovery: When the listener binds to `0.0.0.0`, `net.InterfaceAddrs()` supplies the host's interface addresses. px0 keeps unique non-loopback IPv4 addresses, sorts them for deterministic output, and prints each with the listener's final port. Initial file and line query parameters are preserved in every advertised URL.
+1. Network URL Discovery: When the listener binds to `0.0.0.0`, `net.InterfaceAddrs()` supplies the host's interface addresses. hos-code keeps unique non-loopback IPv4 addresses, sorts them for deterministic output, and prints each with the listener's final port. Initial file and line query parameters are preserved in every advertised URL.
 1. Instant Root Tree Extraction: Before descending into subdirectories, `ix.Build()` extracts and populates the root directory entries (`dir=""`), publishing them directly to `ix.children[""]`. When the browser makes its initial request to `/api/tree`, it immediately renders the root tree nodes without waiting for the deep repository scan to finish.
 
 1. Non-Blocking Browser Launch: `go openBrowser(url)` spawns the platform-specific browser opener (`xdg-open` on Linux, `open` on macOS, `rundll32` on Windows) in a separate goroutine.
@@ -65,7 +65,7 @@ The explorer expands folders through `/api/tree` on demand. Expand All skips ign
 The server is implemented in [`server.go`](../../server.go) using Go's standard `http.ServeMux`. Every request passes through a centralized `ServeHTTP` wrapper that records activity timestamps, tracks status codes and durations, applies pooled Gzip compression when accepted by the client (excluding SSE streams), and logs every HTTP request to the terminal when the `-verbose` flag is active.
 
 ### Base Path & Subpath Prefixing
-When hosted behind reverse proxies or multi-tenant review platforms, px0 supports custom URL prefixes via the `-base-path` CLI flag or `server.basePath` in settings (e.g. `/rev-123/`):
+When hosted behind reverse proxies or multi-tenant review platforms, hos-code supports custom URL prefixes via the `-base-path` CLI flag or `server.basePath` in settings (e.g. `/rev-123/`):
 - All routes below are prefixed with the base path (`/<base-path>/api/...`, `/<base-path>/static/...`).
 - `handleIndex` dynamically injects `<base href="/<base-path>/">` into `web/index.html`, allowing the frontend to resolve relative assets and API endpoints without domain-level assumptions.
 - Requests to `/<base-path>` without a trailing slash redirect to `/<base-path>/`, and root `/` redirects to the configured base path.
@@ -145,9 +145,9 @@ func (s *Server) scavenge() {
 
 ### Client-Server Memory Split & Total Footprint
 
-Because px0 uses a client-server architecture rather than embedding Electron:
+Because hos-code uses a client-server architecture rather than embedding Electron:
 - **Host Server**: The Go backend daemon occupies ~20–30 MB RSS, handling indexing, symbol discovery, regex search, and git operations.
-- **Client Browser Tab**: The frontend web client runs in the user's existing browser, allocating ~80–150 MB for the DOM, V8 runtime, and GPU compositing. Memory is kept strictly bounded because px0's bespoke virtualized scroller mounts only ~60 active rows regardless of file size.
+- **Client Browser Tab**: The frontend web client runs in the user's existing browser, allocating ~80–150 MB for the DOM, V8 runtime, and GPU compositing. Memory is kept strictly bounded because hos-code's bespoke virtualized scroller mounts only ~60 active rows regardless of file size.
 - **Combined Impact**: Total system footprint is ~100–180 MB (~85–90% lower than the ~1,400 MB footprint of desktop Electron IDEs). On remote devboxes and containers, the host pays strictly the ~20–30 MB server cost.
 
 ### Gzip Buffer Pooling
@@ -163,7 +163,7 @@ var gzipPool = sync.Pool{New: func() any {
 
 ## 5. Security Model & Path Sandboxing
 
-Because px0 exposes a local HTTP server that can display source files and interact with local tools, strict boundary constraints are enforced.
+Because hos-code exposes a local HTTP server that can display source files and interact with local tools, strict boundary constraints are enforced.
 
 ### Path Resolution (`safePath` & `resolvePath`)
 
@@ -184,7 +184,7 @@ When navigating code via LSP Go-to-Definition, targets often reside outside the 
 
 ### Origin Verification for Installers
 
-The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.g., `go install ...` or `npm install -g ...`), and the `/api/agent/*` mutations run a coding harness. To guard against cross-origin attacks (such as a malicious website triggering command execution via JavaScript fetch while px0 is running in the background):
+The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.g., `go install ...` or `npm install -g ...`), and the `/api/agent/*` mutations run a coding harness. To guard against cross-origin attacks (such as a malicious website triggering command execution via JavaScript fetch while hos-code is running in the background):
 
 1. The request method must be `POST`.
 1. The request `Origin` header must match the request `Host` header.
@@ -197,8 +197,8 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 
 - `default-src 'self';`
 - `script-src 'self';` (disallows inline scripts; blocks injected `<script>` tags and event handlers)
-- `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;` (allows Google Fonts and dynamic UI styling)
-- `font-src 'self' https://fonts.gstatic.com;`
+- `style-src 'self' 'unsafe-inline';` (dynamic UI styling; no third-party stylesheets)
+- `font-src 'self';` (only the embedded Overpass fonts; other themes use installed monospace fonts)
 - `img-src 'self' data: https: http:;` (supports icons, data URI previews, and external markdown images)
 - `connect-src 'self';` (prevents exfiltration to third-party endpoints)
 - `object-src 'none';`
@@ -206,17 +206,21 @@ The `/api/lsp/install` and `/api/lsp/start` endpoints execute shell commands (e.
 - `frame-ancestors 'none';` (guards against clickjacking)
 - `form-action 'none';`
 
-The pinned Mermaid browser runtime is fetched on demand at runtime and cached under the user cache directory (`~/.px0/cache/vendor/` or `$XDG_CACHE_HOME/px0/vendor/`). When a Markdown preview containing a Mermaid fence is rendered, the frontend requests `/static/vendor/mermaid-12.0.0.min.js`, which `server.go` serves same-origin from the local cache (downloading and caching from the pinned CDN release on first use if absent). This keeps the compiled executable lean while satisfying the strict same-origin `'self'` CSP, preventing exfiltration, and preserving full offline capability for subsequent sessions.
+The pinned Mermaid browser runtime is embedded gzipped (`web/vendor/mermaid-12.0.0.min.js.gz`, from the npm package `mermaid@12.0.0`). When a Markdown preview containing a Mermaid fence is rendered, the frontend requests `/static/vendor/mermaid-12.0.0.min.js`, which `server.go` serves same-origin from the binary. hos-code makes no network request for it, so diagrams work offline from the first use and the strict same-origin `'self'` CSP holds.
+
+### Login on a network address
+
+On a loopback bind there is no login. On any other bind (a Tailscale address, `0.0.0.0`) every request needs the login token (`login.go`): `?token=<token>` on a GET sets an HttpOnly, SameSite=Lax cookie named per port and redirects to the same URL without the token; scripts may send `Authorization: Bearer <token>`. The token comes from `HOS_CODE_LOGIN_TOKEN`, or is generated at start and printed in the URL. hos passes it when it starts hos-code and adds it to the links it hands out. A viewed HTML file (`/view/`) has an opaque origin, so its own images and CSS arrive without the cookie: a logged-in request for `/view/<path>` redirects to `/view/k/<key>/<path>`, where `<key>` is derived from the token and admits only GET and HEAD under that prefix, and every `/view/` response sends `Referrer-Policy: no-referrer`. hos-code posts snags and reviews to hos's `/hos-code/` routes, and to the old `/px0/` routes when an older hos answers with its web page.
 
 ### Binary Size Optimization & Packaging Footprint
 
-px0 employs several complementary strategies to maintain an ultra-lean binary footprint (~12 MB) without runtime packing or startup overhead:
+hos-code employs several complementary strategies to maintain an ultra-lean binary footprint (~12 MB) without runtime packing or startup overhead:
 
 1. **Compile-time Trimming & Stripping**: Binaries are built with `-trimpath` and `-ldflags="-s -w"`, removing host filesystem paths, symbol tables, and DWARF debug sections.
-2. **Runtime Offloading of Heavy Vendor Assets**: Bulky third-party vendor assets (such as the 1.6 MB gzipped / 4 MB uncompressed Mermaid diagramming bundle) are excluded from `go:embed`. Instead, they are downloaded on-demand and cached in volatile/persistent user storage outside the repository, served via same-origin streaming handlers.
+2. **Pre-compressed Vendor Assets**: The Mermaid bundle (1.6 MB gzipped / 5.5 MB uncompressed) is embedded already gzipped and streamed as-is to browsers that accept gzip, so it costs 1.6 MB of binary and no network fetch.
 3. **Frontend Bundle Minification**: Frontend assets (`web/app.js`) are bundled with `--minify` via Bun, reducing uncompressed client JavaScript from ~448 KB to ~250 KB.
 4. **Standard Executable Integrity**: Executables are distributed as native, unpacked binaries rather than using runtime packers (e.g., UPX), preventing antivirus false positives, ensuring compatibility across all platforms (macOS Gatekeeper, OpenBSD W^X, BSDs, Windows ARM64), and enabling the operating system to share read-only executable pages across multiple running processes.
 
-### Self-Update Integrity
+### No Self-Update
 
-Before `px0 --update` executes or installs a release binary, it verifies the download against the SHA-256 digest in that release's `checksums.txt` asset. Missing, malformed, or mismatched checksum data aborts the update without replacing the current executable.
+hos-code never replaces its own binary (`-no-update` is accepted and does nothing). `install.sh` verifies a release archive against the SHA-256 digest in that release's `checksums.txt` before installing it.

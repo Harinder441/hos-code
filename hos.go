@@ -14,10 +14,7 @@ import (
 	"time"
 )
 
-// hosLink is the optional bridge to an hos daemon (Harinder's agent OS) for
-// "Mark Snag". It stays nil, and the feature inert, unless HOS_URL and
-// HOS_PX0_TOKEN are set: hos sets both when it launches px0, and
-// ~/.px0/hos.env (KEY=VALUE lines) can set them by hand.
+// hosLink, the optional bridge to an hos daemon, stays nil unless HOS_URL and HOS_CODE_TOKEN come from the environment or hosEnvPath.
 type hosLink struct {
 	url    string
 	token  string
@@ -32,14 +29,13 @@ const (
 )
 
 func hosEnvPath() string {
-	if xdg := os.Getenv("XDG_CONFIG_HOME"); xdg != "" {
-		return filepath.Join(xdg, "px0", "hos.env")
+	if dir := xdgAppDir("XDG_CONFIG_HOME"); dir != "" {
+		return filepath.Join(dir, "hos.env")
 	}
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		return ""
+	if dir := homeAppDir(); dir != "" {
+		return filepath.Join(dir, "hos.env")
 	}
-	return filepath.Join(home, ".px0", "hos.env")
+	return ""
 }
 
 func readEnvFile(path string) map[string]string {
@@ -70,10 +66,11 @@ func readEnvFile(path string) map[string]string {
 // loadHosLink prefers the launch environment, then the env file; both values
 // must come from the same place so a stale file never pairs with a fresh URL.
 func loadHosLink(getenv func(string) string, envFile string) *hosLink {
-	url, token := strings.TrimSpace(getenv("HOS_URL")), strings.TrimSpace(getenv("HOS_PX0_TOKEN"))
+	url, token := strings.TrimSpace(getenv("HOS_URL")), strings.TrimSpace(getenvCompat(getenv, "HOS_CODE_TOKEN", "HOS_PX0_TOKEN"))
 	if url == "" || token == "" {
 		file := readEnvFile(envFile)
-		url, token = file["HOS_URL"], file["HOS_PX0_TOKEN"]
+		url = file["HOS_URL"]
+		token = getenvCompat(func(k string) string { return file[k] }, "HOS_CODE_TOKEN", "HOS_PX0_TOKEN")
 	}
 	if url == "" || token == "" {
 		return nil
@@ -85,14 +82,14 @@ func loadHosLink(getenv func(string) string, envFile string) *hosLink {
 // hos's origin, session or token.
 func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 	if s.hos == nil {
-		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_PX0_TOKEN, or "+hosEnvPath())
+		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or "+hosEnvPath())
 		return
 	}
 	if r.Method != http.MethodPost {
 		fail(w, http.StatusMethodNotAllowed, "POST a snag")
 		return
 	}
-	// A JSON content type forces a CORS preflight, which px0 never answers, so another site cannot post here.
+	// A JSON content type forces a CORS preflight, which hos-code never answers, so another site cannot post here.
 	if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 		fail(w, http.StatusUnsupportedMediaType, "send JSON")
 		return
@@ -125,16 +122,9 @@ func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, _ := json.Marshal(in)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.hos.url+"/px0/snags", bytes.NewReader(body))
+	res, err := s.postHos(r.Context(), "snags", body)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.hos.token)
-	res, err := s.hos.client.Do(req)
-	if err != nil {
-		fail(w, http.StatusBadGateway, "hos did not answer at "+s.hos.url)
+		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	defer res.Body.Close()
@@ -154,17 +144,33 @@ func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ref": out.Ref})
 }
 
+// postHos posts to hos's /hos-code/ route, and to the old /px0/ route when an hos from before the rename answers with its web page.
+func (s *Server) postHos(ctx context.Context, route string, body []byte) (*http.Response, error) {
+	var res *http.Response
+	for _, prefix := range []string{"/hos-code/", "/px0/"} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.hos.url+prefix+route, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+s.hos.token)
+		res, err = s.hos.client.Do(req)
+		if err != nil {
+			return nil, errors.New("hos did not answer at " + s.hos.url)
+		}
+		if strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") || prefix == "/px0/" {
+			break
+		}
+		res.Body.Close()
+	}
+	return res, nil
+}
+
 func (s *Server) postHosReview(ctx context.Context, payload map[string]any, out any) error {
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.hos.url+"/px0/review", bytes.NewReader(body))
+	res, err := s.postHos(ctx, "review", body)
 	if err != nil {
 		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.hos.token)
-	res, err := s.hos.client.Do(req)
-	if err != nil {
-		return errors.New("hos did not answer at " + s.hos.url)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))
@@ -186,7 +192,7 @@ func (s *Server) postHosReview(ctx context.Context, payload map[string]any, out 
 // handleHosReview turns a review session on or off; while on, new drafts also go to hos and never to GitHub.
 func (s *Server) handleHosReview(w http.ResponseWriter, r *http.Request) {
 	if s.hos == nil {
-		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_PX0_TOKEN, or "+hosEnvPath())
+		fail(w, http.StatusNotFound, "hos is not connected: set HOS_URL and HOS_CODE_TOKEN, or "+hosEnvPath())
 		return
 	}
 	if !s.prOrFail(w) {

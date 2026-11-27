@@ -260,7 +260,7 @@ const BUILTIN_SCHEMA = [
   {
     key: "server.basePath",
     title: "Base Path",
-    description: "Base URL path prefix for the px0 server and web interface (e.g. /rev-123/).",
+    description: "Base URL path prefix for the hos-code server and web interface (e.g. /rev-123/).",
     category: "Server",
     type: "string",
     default: "/"
@@ -272,7 +272,7 @@ let settingsData = {
   defaults: Object.fromEntries(BUILTIN_SCHEMA.map(s => [s.key, s.default])),
   schema: BUILTIN_SCHEMA,
   raw: '{\n}\n',
-  path: '~/.px0/settings.json'
+  path: '~/.hos-code/settings.json'
 };
 let activeSettingsCategory = 'Commonly Used';
 let settingsViewMode = 'ui'; // 'ui' | 'json'
@@ -387,7 +387,7 @@ export function applySettingLive(key, val) {
       break;
     }
     case 'workbench.colorTheme': {
-      const storedTheme = localStorage.getItem('px0.theme');
+      const storedTheme = localStorage.getItem('hos-code.theme');
       const nextTheme = chooseThemePreference(storedTheme, val, DEFAULT_THEME);
       if (nextTheme) setTheme(nextTheme, false);
       break;
@@ -399,12 +399,12 @@ export function applySettingLive(key, val) {
     }
     case 'markdown.preview.open': {
       S.mdPreview = val === true || val === 'true';
-      try { localStorage.setItem('px0.mdPreview', S.mdPreview ? 'true' : 'false'); } catch {}
+      try { localStorage.setItem('hos-code.mdPreview', S.mdPreview ? 'true' : 'false'); } catch {}
       break;
     }
     case 'table.preview.open': {
       S.tablePreview = val === true || val === 'true';
-      try { localStorage.setItem('px0.tablePreview', S.tablePreview ? 'true' : 'false'); } catch {}
+      try { localStorage.setItem('hos-code.tablePreview', S.tablePreview ? 'true' : 'false'); } catch {}
       break;
     }
     case 'editor.vimMode': {

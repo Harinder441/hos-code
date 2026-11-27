@@ -125,7 +125,8 @@ body.side-hidden #side, body.side-hidden #resizer { display: none; }
 .side-actions .mini { margin-left: 0; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; padding: 0; }
 .side-logo { flex: none; display: flex; align-items: center; padding: 2px 3px; border-radius: var(--r); }
 .side-logo:hover { background: var(--bg4); }
-.side-logo img { height: 13px; width: auto; }
+.hc-wordmark { gap: 4px; font-family: var(--mono); font-size: 11px; font-weight: 600; letter-spacing: 0.02em; color: var(--fg); }
+.hc-wordmark-big { display: inline-flex; align-items: center; gap: 10px; font-size: 32px; }
 
 /* ---------- tree ---------- */
 .tw { display: block; }
@@ -1381,17 +1382,6 @@ body.mermaid-fs-active { overflow: hidden; }
 #empty { position: absolute; inset: 0; display: grid; place-items: center; background: var(--bg); }
 .empty-inner { text-align: center; color: var(--faint); }
 .empty-logo { display: flex; justify-content: center; align-items: flex-end; gap: 10px; margin-bottom: 28px; }
-.empty-logo img { width: 130px; height: auto; }
-/* Logo variants: the dark one by default, the light one on light themes. */
-.logo-light { display: none; }
-:root[data-theme="light"] .logo-dark,
-:root[data-theme="catppuccin-latte"] .logo-dark,
-:root[data-theme="gruvbox-light"] .logo-dark,
-:root[data-theme="solarized-light"] .logo-dark { display: none; }
-:root[data-theme="light"] .logo-light,
-:root[data-theme="catppuccin-latte"] .logo-light,
-:root[data-theme="gruvbox-light"] .logo-light,
-:root[data-theme="solarized-light"] .logo-light { display: block; }
 .empty-inner dl { display: grid; grid-template-columns: auto auto; gap: 9px 16px; align-items: center; font-size: 12.5px; }
 .empty-inner dt { text-align: right; display: flex; gap: 3px; justify-content: flex-end; }
 .empty-inner dd { margin: 0; text-align: left; color: var(--dim); }

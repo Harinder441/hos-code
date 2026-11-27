@@ -1,7 +1,7 @@
 package main
 
 import (
-	iign "px0/internal/ignore"
+	iign "hos-code/internal/ignore"
 )
 
 type ruleKind = iign.RuleKind

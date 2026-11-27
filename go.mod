@@ -1,4 +1,4 @@
-module px0
+module hos-code
 
 go 1.25
 

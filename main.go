@@ -1,4 +1,4 @@
-// Package main implements px0: a fast, local-first code navigator and review tool
+// Package main implements hos-code: a fast, local-first code navigator and review tool
 // that opens any repository or pull request in a responsive browser UI.
 package main
 
@@ -47,7 +47,7 @@ func main() {
 		basePathFlag = flag.String("base-path", "", "base URL path prefix to serve endpoints and assets from (e.g. /rev-123/)")
 	)
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "px0 %s - a code navigator\n\nusage:\n  px0 [flags] [file or directory]\n  px0 [flags] <pr-url>\n\nflags:\n", version)
+		fmt.Fprintf(os.Stderr, "%[1]s %[2]s - a code navigator\n\nusage:\n  %[1]s [flags] [file or directory]\n  %[1]s [flags] <pr-url>\n\nflags:\n", appName, version)
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -67,13 +67,13 @@ func main() {
 	}
 
 	if *showVer || *showVerShort || (flag.NArg() == 1 && flag.Arg(0) == "version") {
-		fmt.Printf("px0 %s (%s/%s)\n", version, runtime.GOOS, runtime.GOARCH)
+		fmt.Printf("%s %s (%s/%s)\n", appName, version, runtime.GOOS, runtime.GOARCH)
 		return
 	}
 
 	// A full pull request URL (e.g. https://github.com/owner/repo/pull/123)
 	// checks out the PR's full source tree instead of resolving a local file/directory.
-	// Only full URLs via "px0 <url>" are supported for PR review.
+	// Only full URLs via "hos-code <url>" are supported for PR review.
 	target := "."
 	var prProvider GitProvider
 	var prTarget PRTarget
@@ -81,7 +81,7 @@ func main() {
 	if flag.NArg() > 0 {
 		arg0 := flag.Arg(0)
 		if arg0 == "pr" {
-			fatal(fmt.Errorf("'px0 pr' is no longer supported; open pull requests directly with: px0 <url>"))
+			fatal(fmt.Errorf("'%[1]s pr' is no longer supported; open pull requests directly with: %[1]s <url>", appName))
 		}
 		if provider, pt, ok := DetectPRURL(arg0); ok {
 			prProvider, prTarget, isPR = provider, pt, true
@@ -90,7 +90,7 @@ func main() {
 		}
 	}
 	if isPR && gitDisabled {
-		fatal(fmt.Errorf("px0: git is required for PR review; remove -no-git"))
+		fatal(fmt.Errorf("git is required for PR review; remove -no-git"))
 	}
 
 	var pr *prSession
@@ -106,7 +106,7 @@ func main() {
 		cancel()
 		if err != nil {
 			sp.Fail(fmt.Sprintf("Failed to prepare PR #%d: %v", prTarget.Number, err))
-			fatal(fmt.Errorf("px0: %w", err))
+			fatal(err)
 		}
 		if p.meta.Merged {
 			sp.Success(fmt.Sprintf("PR #%d checked out [merged] (%s)", prTarget.Number, p.meta.Title))
@@ -145,8 +145,13 @@ func main() {
 		configuredBasePath = cleanBasePath(*cfg.ServerBasePath)
 	}
 
+	_, portStr, _ := net.SplitHostPort(addr)
+	boundPort, _ := strconv.Atoi(portStr)
+	login, loginSrc := loginGateFromEnv(*host, boundPort, configuredBasePath)
+
 	pxSrv := NewServer(ix, lsp, configuredBasePath)
 	pxSrv.tel = tel
+	pxSrv.login = login
 	if pr != nil {
 		pxSrv.SetPR(pr)
 	}
@@ -156,7 +161,10 @@ func main() {
 	srv.RegisterOnShutdown(pxSrv.EndStreams)
 
 	url := viewerURL(addr, initialFile, initialLine, configuredBasePath)
-	uiHeading("px0 "+version, nil, os.Stdout)
+	if loginSrc == loginGenerated {
+		url = withLoginToken(url, login.token)
+	}
+	uiHeading(appName+" "+version, nil, os.Stdout)
 	if pr != nil {
 		prTitle := fmt.Sprintf("#%d %s", pr.meta.Number, pr.meta.Title)
 		if pr.meta.Merged {
@@ -171,8 +179,17 @@ func main() {
 	uiKV("url", uiAccent(url, os.Stdout), 11, os.Stdout)
 	if *host == "0.0.0.0" {
 		for _, networkURL := range networkURLs(addr, initialFile, initialLine) {
+			if loginSrc == loginGenerated {
+				networkURL = withLoginToken(networkURL, login.token)
+			}
 			uiKV("network", uiAccent(networkURL, os.Stdout), 11, os.Stdout)
 		}
+	}
+	switch loginSrc {
+	case loginFromEnv:
+		uiKV("login", "token required ("+loginTokenEnv+")", 11, os.Stdout)
+	case loginGenerated:
+		uiKV("login", "token required (in the url above; set "+loginTokenEnv+" to choose it)", 11, os.Stdout)
 	}
 	uiHint("ctrl-c to stop", os.Stdout)
 
@@ -228,7 +245,7 @@ func main() {
 		<-stop
 		interrupted = true
 		fmt.Print("\r")
-		uiStatus("info", "px0 stopped", "", 0, os.Stderr)
+		uiStatus("info", appName+" stopped", "", 0, os.Stderr)
 		go func() {
 			<-stop // Second interrupt forces immediate exit
 			os.Exit(130)
@@ -499,6 +516,6 @@ func isWSL() bool {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "px0:", err)
+	fmt.Fprintln(os.Stderr, appName+":", err)
 	os.Exit(1)
 }

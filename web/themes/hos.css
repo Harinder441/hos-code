@@ -72,8 +72,6 @@
   --gi: #0b6b4c; --gd: #b02a31;
   --gi-bg: rgba(11, 107, 76, 0.1); --gd-bg: rgba(201, 50, 58, 0.09);
 }
-:root[data-theme="hos-light"] .logo-dark { display: none; }
-:root[data-theme="hos-light"] .logo-light { display: block; }
 
 @media (prefers-color-scheme: light) {
   :root[data-theme="hos"] {
@@ -92,6 +90,4 @@
     --gi: #0b6b4c; --gd: #b02a31;
     --gi-bg: rgba(11, 107, 76, 0.1); --gd-bg: rgba(201, 50, 58, 0.09);
   }
-  :root[data-theme="hos"] .logo-dark { display: none; }
-  :root[data-theme="hos"] .logo-light { display: block; }
 }

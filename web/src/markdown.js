@@ -133,7 +133,7 @@ export function togglePreview() {
 function mdSetPref(d, on) {
   const table = previewKind(d) === 'table';
   if (table) S.tablePreview = on; else S.mdPreview = on;
-  try { localStorage.setItem(table ? 'px0.tablePreview' : 'px0.mdPreview', on ? 'true' : 'false'); } catch {}
+  try { localStorage.setItem(table ? 'hos-code.tablePreview' : 'hos-code.mdPreview', on ? 'true' : 'false'); } catch {}
 }
 
 /* ---------- sanitising ---------- */
@@ -153,7 +153,7 @@ const MD_ATTRS = new Set(('align valign alt title lang dir width height colspan 
 const MD_TOKENS = new Set('k kt nf nc nb nv no na nt nd np s m o p c cp gi gd gh ge gs err g'.split(' '));
 const MD_SCHEME = /^([a-z][a-z0-9+.-]*):/i;
 // Relative references resolve against this stand-in origin; landing anywhere else means they were not relative.
-const MD_ORIGIN = 'http://px0.invalid';
+const MD_ORIGIN = 'http://hos-code.invalid';
 
 /* The URL parser drops tabs and newlines anywhere and control characters at
    either end, so "java&#9;script:" still has a scheme. Test what it will see. */

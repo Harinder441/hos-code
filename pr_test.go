@@ -180,6 +180,8 @@ func TestPRSessionCloseRefCleanup(t *testing.T) {
 	run("config", "user.email", "test@test.local")
 	run("commit", "--allow-empty", "-m", "initial")
 
+	run("update-ref", "refs/hos-code/pr/99", "HEAD")
+	run("update-ref", "refs/hos-code/base/99", "HEAD")
 	run("update-ref", "refs/px0/pr/99", "HEAD")
 	run("update-ref", "refs/px0/base/99", "HEAD")
 
@@ -191,13 +193,16 @@ func TestPRSessionCloseRefCleanup(t *testing.T) {
 	}
 	p.Close()
 
-	checkRef := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/px0/pr/99")
+	checkRef := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/hos-code/pr/99")
 	if err := checkRef.Run(); err == nil {
-		t.Errorf("refs/px0/pr/99 was not deleted on Close")
+		t.Errorf("refs/hos-code/pr/99 was not deleted on Close")
 	}
-	checkBase := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/px0/base/99")
+	checkBase := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/hos-code/base/99")
 	if err := checkBase.Run(); err == nil {
-		t.Errorf("refs/px0/base/99 was not deleted on Close")
+		t.Errorf("refs/hos-code/base/99 was not deleted on Close")
+	}
+	if err := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/px0/pr/99").Run(); err == nil {
+		t.Errorf("refs/px0/pr/99 from before the rename was not deleted on Close")
 	}
 }
 
@@ -245,9 +250,9 @@ func TestPRSessionPullFastForwardAndDiverge(t *testing.T) {
 	gitTestRun(t, srcRepo, "checkout", "-q", "main")
 
 	// Check out the PR into a worktree, same as checkoutPR does.
-	gitTestRun(t, srcRepo, "fetch", "--no-tags", "origin", "refs/pull/99/head:refs/px0/pr/99")
+	gitTestRun(t, srcRepo, "fetch", "--no-tags", "origin", "refs/pull/99/head:refs/hos-code/pr/99")
 	worktree := filepath.Join(base, "wt")
-	gitTestRun(t, srcRepo, "worktree", "add", "--detach", worktree, "refs/px0/pr/99")
+	gitTestRun(t, srcRepo, "worktree", "add", "--detach", worktree, "refs/hos-code/pr/99")
 
 	p := &prSession{
 		worktree: worktree,

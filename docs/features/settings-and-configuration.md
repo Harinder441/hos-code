@@ -1,6 +1,6 @@
 # Settings & Configuration System
 
-px0 includes a built-in visual Settings manager modeled after VS Code. Accessible via `Cmd/Ctrl+,` or the gear icon in the status bar, it enables complete customization of editor ergonomics, typography, themes, diff views, and coding agents with live real-time synchronization.
+hos-code includes a built-in visual Settings manager modeled after VS Code. Accessible via `Cmd/Ctrl+,` or the gear icon in the status bar, it enables complete customization of editor ergonomics, typography, themes, diff views, and coding agents with live real-time synchronization.
 
 ---
 
@@ -8,7 +8,7 @@ px0 includes a built-in visual Settings manager modeled after VS Code. Accessibl
 
 Developer environments are deeply personal: engineers have strong preferences regarding font sizes, line heights, font families, cursor blink styles, tab spacing, and keybindings. However, managing configuration files manually in text editors or dealing with fragmented config directories can be cumbersome. Furthermore, storing settings inside a workspace repository risks polluting Git commits with personal editor preferences.
 
-px0 stores all configuration in a single per-user global file (`~/.px0/settings.json` or `$XDG_CONFIG_HOME/px0/settings.json`), completely isolated from your repository files. The visual Settings editor offers a dual-mode experience: an intuitive graphical form with interactive pill buttons for quick toggling, and a synchronized raw JSON editor with schema validation. Changes apply immediately in real time without refreshing the browser.
+hos-code stores all configuration in a single per-user global file (`~/.hos-code/settings.json` or `$XDG_CONFIG_HOME/hos-code/settings.json`), completely isolated from your repository files. The visual Settings editor offers a dual-mode experience: an intuitive graphical form with interactive pill buttons for quick toggling, and a synchronized raw JSON editor with schema validation. Changes apply immediately in real time without refreshing the browser.
 
 ---
 
@@ -55,7 +55,7 @@ px0 stores all configuration in a single per-user global file (`~/.px0/settings.
 | `lsp.hover.enabled` | LSP | `true` | `true`, `false` | Hover documentation cards |
 | `agent.harness` | Coding Agent | `""` | `claude`, `gemini`, `agy`, etc. | Preferred CLI coding harness |
 | `agent.timeoutSeconds` | Coding Agent | `120` | `10` – `600` (seconds) | Max runtime for agent edits |
-| `github.token` | GitHub | `""` | any string | Personal access token for `px0 pr` review; takes precedence over `GITHUB_TOKEN` and `gh auth token`. Masked in the Settings UI. |
+| `github.token` | GitHub | `""` | any string | Personal access token for `hos-code pr` review; takes precedence over `GITHUB_TOKEN` and `gh auth token`. Masked in the Settings UI. |
 | `server.basePath` | Server | `"/"` | any path prefix (e.g. `"/rev-123/"`) | Base URL path prefix to serve endpoints and assets from. Overridden by the `-base-path` CLI flag. |
 
 ---
@@ -87,5 +87,5 @@ For automated machine setup, dotfile repositories, or scripting, you can directl
 ```
 
 The file is stored at:
-- `~/.px0/settings.json`
-- Or `$XDG_CONFIG_HOME/px0/settings.json` (if `XDG_CONFIG_HOME` is set).
+- `~/.hos-code/settings.json`
+- Or `$XDG_CONFIG_HOME/hos-code/settings.json` (if `XDG_CONFIG_HOME` is set).

@@ -1,7 +1,7 @@
 package main
 
 import (
-	"px0/internal/metrics"
+	"hos-code/internal/metrics"
 )
 
 // ProcessMetrics captures system resource usage of the px0 server process

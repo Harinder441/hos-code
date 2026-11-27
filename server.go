@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"compress/gzip"
 	"context"
 	"embed"
@@ -14,6 +13,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -27,7 +27,7 @@ import (
 	"time"
 )
 
-//go:embed web/index.html web/style.css web/themes web/vendor
+//go:embed web/index.html web/style.css web/favicon.svg web/themes web/vendor
 //go:embed web/app.js
 var embedded embed.FS
 
@@ -68,6 +68,7 @@ type Server struct {
 	session    *sessionManager
 	hos        *hosLink    // nil unless an hos daemon is configured (hos.go)
 	hosReview  atomic.Bool // set while a review session forwards draft comments to hos (hos.go)
+	login      *loginGate  // nil on a loopback bind (login.go)
 
 	lastReq atomic.Int64 // unix nanos of the most recent request
 
@@ -216,7 +217,7 @@ func NewServer(ix *Index, lsp *lspManager, basePaths ...string) *Server {
 	if len(basePaths) > 0 && basePaths[0] != "" {
 		bp = cleanBasePath(basePaths[0])
 	}
-	s := &Server{ix: ix, lsp: lsp, diffBase: "HEAD", basePath: bp, mux: http.NewServeMux(), streamsDone: make(chan struct{}), hos: loadHosLink(os.Getenv, hosEnvPath())}
+	s := &Server{ix: ix, lsp: lsp, diffBase: "HEAD", basePath: bp, mux: http.NewServeMux(), streamsDone: make(chan struct{}), hos: loadHosLink(withFileEnv(os.Getenv), hosEnvPath())}
 	s.session = newSessionManager(s.basePath, ix.Root())
 	s.gitWatcher = NewGitWatcher(ix)
 	s.gitWatcher.Start(context.Background())
@@ -249,7 +250,7 @@ func (s *Server) scavenge() {
 	}
 }
 
-const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
+const contentSecurityPolicy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';img-src 'self' data: https: http:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'none';"
 
 // ServeHTTP delegates incoming HTTP requests to the configured ServeMux,
 // recording request timing and updating access timestamps.
@@ -287,13 +288,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if uri == "" {
 				uri = "/"
 			}
-			uiStatus(role, "http", fmt.Sprintf("%s %s · %d  (%s)", r.Method, uri, status, dur), 0, os.Stdout)
+			uiStatus(role, "http", fmt.Sprintf("%s %s · %d  (%s)", r.Method, redactLoginURI(uri), status, dur), 0, os.Stdout)
 		}()
 	}
 
 	var out http.ResponseWriter = rec
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Security-Policy", contentSecurityPolicy)
+	if !s.login.admit(rec, r) {
+		return
+	}
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") && !isSSE {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Header().Add("Vary", "Accept-Encoding")
@@ -724,117 +728,6 @@ func staticContentType(p string) string {
 	return "application/octet-stream"
 }
 
-var (
-	vendorFetchMu sync.Mutex
-	vendorCDNs    = map[string]string{
-		"vendor/mermaid-12.0.0.min.js": "https://cdn.jsdelivr.net/npm/mermaid@12.0.0/dist/mermaid.min.js",
-	}
-)
-
-func vendorCacheDir() string {
-	if c := os.Getenv("XDG_CACHE_HOME"); c != "" {
-		return filepath.Join(c, "px0", "vendor")
-	}
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		return filepath.Join(home, ".px0", "cache", "vendor")
-	}
-	return filepath.Join(os.TempDir(), "px0-cache", "vendor")
-}
-
-type memGzFile struct {
-	*bytes.Reader
-	name    string
-	size    int64
-	modTime time.Time
-}
-
-func (m *memGzFile) Stat() (fs.FileInfo, error) { return m, nil }
-func (m *memGzFile) Close() error               { return nil }
-func (m *memGzFile) Name() string               { return m.name }
-func (m *memGzFile) Size() int64                { return m.size }
-func (m *memGzFile) Mode() fs.FileMode          { return 0644 }
-func (m *memGzFile) ModTime() time.Time         { return m.modTime }
-func (m *memGzFile) IsDir() bool                { return false }
-func (m *memGzFile) Sys() any                   { return nil }
-
-func openOrFetchVendorAsset(rel string) (fs.File, error) {
-	gzName := path.Base(rel) + ".gz"
-	cachedPath := filepath.Join(vendorCacheDir(), gzName)
-
-	// 1. Check local persistent cache
-	if f, err := os.Open(cachedPath); err == nil {
-		return f, nil
-	}
-
-	// 2. Check local repository web/ directory (for dev/test fallback)
-	localGz := filepath.Join("web", filepath.FromSlash(rel)+".gz")
-	if f, err := os.Open(localGz); err == nil {
-		return f, nil
-	}
-
-	cdnURL, ok := vendorCDNs[rel]
-	if !ok {
-		return nil, os.ErrNotExist
-	}
-
-	vendorFetchMu.Lock()
-	defer vendorFetchMu.Unlock()
-
-	// Double-check cache after acquiring lock
-	if f, err := os.Open(cachedPath); err == nil {
-		return f, nil
-	}
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	resp, err := client.Get(cdnURL)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("CDN returned HTTP %d for %s", resp.StatusCode, rel)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Compress downloaded asset with gzip level 9
-	var gzBuf bytes.Buffer
-	gw, err := gzip.NewWriterLevel(&gzBuf, gzip.BestCompression)
-	if err != nil {
-		gw = gzip.NewWriter(&gzBuf)
-	}
-	if _, err := gw.Write(body); err != nil {
-		gw.Close()
-		return nil, err
-	}
-	if err := gw.Close(); err != nil {
-		return nil, err
-	}
-
-	gzBytes := gzBuf.Bytes()
-
-	// Cache to disk for offline and subsequent requests
-	if err := os.MkdirAll(vendorCacheDir(), 0755); err == nil {
-		tmpPath := cachedPath + fmt.Sprintf(".%d.tmp", time.Now().UnixNano())
-		if err := os.WriteFile(tmpPath, gzBytes, 0644); err == nil {
-			_ = os.Rename(tmpPath, cachedPath)
-		}
-	}
-
-	if f, err := os.Open(cachedPath); err == nil {
-		return f, nil
-	}
-	return &memGzFile{
-		Reader:  bytes.NewReader(gzBytes),
-		name:    gzName,
-		size:    int64(len(gzBytes)),
-		modTime: time.Now(),
-	}, nil
-}
-
 func (s *Server) handleStatic(sub fs.FS, prefix string) http.Handler {
 	fileServer := http.StripPrefix(prefix, http.FileServer(http.FS(sub)))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -848,9 +741,6 @@ func (s *Server) handleStatic(sub fs.FS, prefix string) http.Handler {
 		// Check if a pre-compressed .gz asset exists for this path.
 		gzPath := rel + ".gz"
 		gzFile, err := sub.Open(gzPath)
-		if err != nil && strings.HasPrefix(rel, "vendor/") {
-			gzFile, err = openOrFetchVendorAsset(rel)
-		}
 		if err == nil {
 			defer gzFile.Close()
 			fi, err := gzFile.Stat()
@@ -1355,7 +1245,18 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 
 // The sandbox CSP gives the page an opaque origin so it cannot drive px0's own API.
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
-	abs, _, ok := s.safePath(strings.TrimPrefix(r.URL.Path, s.routePath("/view/")))
+	rel := strings.TrimPrefix(r.URL.Path, s.routePath("/view/"))
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if s.login != nil {
+		keyed, ok := strings.CutPrefix(r.URL.Path, s.login.viewPrefix())
+		if !ok {
+			next := url.URL{Path: s.login.viewPrefix() + rel, RawQuery: r.URL.RawQuery}
+			http.Redirect(w, r, next.RequestURI(), http.StatusSeeOther)
+			return
+		}
+		rel = keyed
+	}
+	abs, _, ok := s.safePath(rel)
 	if !ok {
 		http.NotFound(w, r)
 		return

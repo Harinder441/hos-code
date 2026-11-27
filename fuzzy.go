@@ -1,7 +1,7 @@
 package main
 
 import (
-	"px0/internal/fuzzy"
+	"hos-code/internal/fuzzy"
 	"runtime"
 	"sort"
 	"strings"
