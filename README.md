@@ -80,5 +80,5 @@ See [AGENT.md](AGENT.md) for the inner loop and [docs/](docs/) for features and 
 
 ## License
 
-[MIT](LICENSE). Copyright (c) 2026 Arpit Bhayani, and Harinder Singh for the changes in this fork. Bundled
+[MIT](LICENSE). Copyright (c) 2026 Arpit Bhayani, and the hos authors for the changes in this fork. Bundled
 components and their licences: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
