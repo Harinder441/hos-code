@@ -122,16 +122,9 @@ func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, _ := json.Marshal(in)
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, s.hos.url+"/px0/snags", bytes.NewReader(body))
+	res, err := s.postHos(r.Context(), "snags", body)
 	if err != nil {
-		fail(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.hos.token)
-	res, err := s.hos.client.Do(req)
-	if err != nil {
-		fail(w, http.StatusBadGateway, "hos did not answer at "+s.hos.url)
+		fail(w, http.StatusBadGateway, err.Error())
 		return
 	}
 	defer res.Body.Close()
@@ -151,17 +144,33 @@ func (s *Server) handleHosSnag(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ref": out.Ref})
 }
 
+// postHos posts to hos's /hos-code/ route, and to the old /px0/ route when an hos from before the rename answers with its web page.
+func (s *Server) postHos(ctx context.Context, route string, body []byte) (*http.Response, error) {
+	var res *http.Response
+	for _, prefix := range []string{"/hos-code/", "/px0/"} {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.hos.url+prefix+route, bytes.NewReader(body))
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+s.hos.token)
+		res, err = s.hos.client.Do(req)
+		if err != nil {
+			return nil, errors.New("hos did not answer at " + s.hos.url)
+		}
+		if strings.HasPrefix(res.Header.Get("Content-Type"), "application/json") || prefix == "/px0/" {
+			break
+		}
+		res.Body.Close()
+	}
+	return res, nil
+}
+
 func (s *Server) postHosReview(ctx context.Context, payload map[string]any, out any) error {
 	body, _ := json.Marshal(payload)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.hos.url+"/px0/review", bytes.NewReader(body))
+	res, err := s.postHos(ctx, "review", body)
 	if err != nil {
 		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+s.hos.token)
-	res, err := s.hos.client.Do(req)
-	if err != nil {
-		return errors.New("hos did not answer at " + s.hos.url)
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(io.LimitReader(res.Body, 1<<16))

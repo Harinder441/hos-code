@@ -31,6 +31,7 @@ type loginGate struct {
 	cookie string
 	value  string
 	path   string
+	view   string
 }
 
 func isLoopbackHost(host string) bool {
@@ -60,14 +61,39 @@ func loginGateFor(host string, port int, basePath string, getenv func(string) st
 		token = hex.EncodeToString(b)
 		src = loginGenerated
 	}
-	mac := hmac.New(sha256.New, []byte(token))
-	mac.Write([]byte(appName + " login"))
 	return &loginGate{
 		token:  token,
 		cookie: "hos_code_login_" + strconv.Itoa(port),
-		value:  hex.EncodeToString(mac.Sum(nil)),
+		value:  derive(token, appName+" login"),
 		path:   cleanBasePath(basePath),
+		view:   derive(token, appName+" view"),
 	}, src
+}
+
+func derive(token, purpose string) string {
+	mac := hmac.New(sha256.New, []byte(token))
+	mac.Write([]byte(purpose))
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+// A viewed HTML file has an opaque origin, so its images and CSS arrive without the login cookie; the key in its path admits them.
+func (g *loginGate) viewPrefix() string {
+	return g.path + "view/k/" + g.view + "/"
+}
+
+func (g *loginGate) admitsView(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	rest, ok := strings.CutPrefix(r.URL.Path, g.path+"view/k/")
+	if !ok {
+		return false
+	}
+	key, _, ok := strings.Cut(rest, "/")
+	if !ok || subtle.ConstantTimeCompare([]byte(key), []byte(g.view)) != 1 {
+		return false
+	}
+	return strings.HasPrefix(path.Clean(r.URL.Path)+"/", g.viewPrefix())
 }
 
 func (g *loginGate) matches(token string) bool {
@@ -82,6 +108,9 @@ func (g *loginGate) admit(w http.ResponseWriter, r *http.Request) bool {
 		return true
 	}
 	if c, err := r.Cookie(g.cookie); err == nil && subtle.ConstantTimeCompare([]byte(c.Value), []byte(g.value)) == 1 {
+		return true
+	}
+	if g.admitsView(r) {
 		return true
 	}
 	q := r.URL.Query()

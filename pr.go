@@ -214,8 +214,10 @@ func (p *prSession) Close() {
 	}
 	if p.srcRepo != "" {
 		exec.Command("git", "-C", p.srcRepo, "worktree", "remove", "--force", p.worktree).Run()
-		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/hos-code/pr/%d", p.meta.Number)).Run()
-		exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/hos-code/base/%d", p.meta.Number)).Run()
+		for _, ns := range []string{appName, legacyName} {
+			exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/%s/pr/%d", ns, p.meta.Number)).Run()
+			exec.Command("git", "-C", p.srcRepo, "update-ref", "-d", fmt.Sprintf("refs/%s/base/%d", ns, p.meta.Number)).Run()
+		}
 	}
 	os.RemoveAll(p.worktree)
 }

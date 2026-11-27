@@ -13,6 +13,7 @@ import (
 	"mime"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -1244,7 +1245,18 @@ func (s *Server) handleRaw(w http.ResponseWriter, r *http.Request) {
 
 // The sandbox CSP gives the page an opaque origin so it cannot drive px0's own API.
 func (s *Server) handleView(w http.ResponseWriter, r *http.Request) {
-	abs, _, ok := s.safePath(strings.TrimPrefix(r.URL.Path, s.routePath("/view/")))
+	rel := strings.TrimPrefix(r.URL.Path, s.routePath("/view/"))
+	w.Header().Set("Referrer-Policy", "no-referrer")
+	if s.login != nil {
+		keyed, ok := strings.CutPrefix(r.URL.Path, s.login.viewPrefix())
+		if !ok {
+			next := url.URL{Path: s.login.viewPrefix() + rel, RawQuery: r.URL.RawQuery}
+			http.Redirect(w, r, next.RequestURI(), http.StatusSeeOther)
+			return
+		}
+		rel = keyed
+	}
+	abs, _, ok := s.safePath(rel)
 	if !ok {
 		http.NotFound(w, r)
 		return

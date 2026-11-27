@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -269,5 +270,84 @@ func TestIndexServesOnlyLocalAssets(t *testing.T) {
 		if rec.Code != http.StatusOK || rec.Body.Len() == 0 {
 			t.Fatalf("%s = %d (%d bytes)", asset, rec.Code, rec.Body.Len())
 		}
+	}
+}
+
+func TestViewUnderLoginLoadsRelativeAssetsWithoutTheCookie(t *testing.T) {
+	s, root := newTestServer(t)
+	for rel, body := range map[string]string{
+		"docs/page.html":   `<link rel="stylesheet" href="style.css"><img src="img/dot.png">`,
+		"docs/style.css":   "body{}",
+		"docs/img/dot.png": "png",
+	} {
+		p := filepath.Join(root, filepath.FromSlash(rel))
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		if err := os.WriteFile(p, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	g, _ := loginGateFor("100.64.0.5", 7777, "/", func(k string) string {
+		if k == loginTokenEnv {
+			return "secret-token"
+		}
+		return ""
+	}, "hos-code")
+	s.login = g
+	srv := httptest.NewServer(s)
+	defer srv.Close()
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
+	do := func(method, target string, cookie *http.Cookie) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(method, srv.URL+target, nil)
+		if cookie != nil {
+			req.AddCookie(cookie)
+		}
+		res, err := client.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res
+	}
+
+	login := do(http.MethodGet, "/?token=secret-token", nil)
+	cookie := login.Cookies()[0]
+	opened := do(http.MethodGet, "/view/docs/page.html", cookie)
+	page := opened.Header.Get("Location")
+	if opened.StatusCode != http.StatusSeeOther || page != "/view/k/"+g.view+"/docs/page.html" || opened.Header.Get("Referrer-Policy") != "no-referrer" {
+		t.Fatalf("view with cookie = %d %q", opened.StatusCode, page)
+	}
+	if strings.Contains(page, g.value) || strings.Contains(page, g.token) {
+		t.Fatalf("the view key must not be the login cookie or token: %q", page)
+	}
+	base, _ := url.Parse(page)
+	for _, rel := range []string{"", "style.css", "img/dot.png"} {
+		target := base.ResolveReference(&url.URL{Path: rel}).Path
+		if rel == "" {
+			target = page
+		}
+		res := do(http.MethodGet, target, nil)
+		if res.StatusCode != http.StatusOK || res.Header.Get("Referrer-Policy") != "no-referrer" || !strings.HasPrefix(res.Header.Get("Content-Security-Policy"), "sandbox") {
+			t.Fatalf("%s without the cookie = %d %q", target, res.StatusCode, res.Header.Get("Content-Security-Policy"))
+		}
+	}
+	for _, target := range []string{
+		"/view/docs/style.css",
+		"/view/k/" + strings.Repeat("0", 64) + "/docs/style.css",
+		"/view/k/" + g.view + "/../../api/meta",
+		"/view/k/" + g.view + "/%2e%2e/%2e%2e/api/meta",
+		"/api/meta",
+	} {
+		if res := do(http.MethodGet, target, nil); res.StatusCode == http.StatusOK || res.StatusCode == http.StatusSeeOther {
+			t.Fatalf("%s without the cookie = %d", target, res.StatusCode)
+		}
+	}
+	if res := do(http.MethodPost, page, nil); res.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("a POST with the view key = %d", res.StatusCode)
+	}
+
+	s.login = nil
+	if res := do(http.MethodGet, "/view/docs/page.html", nil); res.StatusCode != http.StatusOK {
+		t.Fatalf("loopback view = %d", res.StatusCode)
 	}
 }

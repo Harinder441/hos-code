@@ -182,6 +182,8 @@ func TestPRSessionCloseRefCleanup(t *testing.T) {
 
 	run("update-ref", "refs/hos-code/pr/99", "HEAD")
 	run("update-ref", "refs/hos-code/base/99", "HEAD")
+	run("update-ref", "refs/px0/pr/99", "HEAD")
+	run("update-ref", "refs/px0/base/99", "HEAD")
 
 	tmpWT := t.TempDir()
 	p := &prSession{
@@ -198,6 +200,9 @@ func TestPRSessionCloseRefCleanup(t *testing.T) {
 	checkBase := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/hos-code/base/99")
 	if err := checkBase.Run(); err == nil {
 		t.Errorf("refs/hos-code/base/99 was not deleted on Close")
+	}
+	if err := exec.Command("git", "-C", root, "rev-parse", "--verify", "refs/px0/pr/99").Run(); err == nil {
+		t.Errorf("refs/px0/pr/99 from before the rename was not deleted on Close")
 	}
 }
 
