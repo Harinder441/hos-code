@@ -3,9 +3,23 @@
 hos-code is a fast, local-first code reader and reviewer that runs in your browser. It is the Code view of
 [hos](https://github.com/Harinder441/hos), and it also runs on its own.
 
-It is a fork of [px0](https://github.com/px0-ai/px0) by Arpit Bhayani (MIT). The fork removes the AI editing features
-and self-update, adds the hos bridge (Mark Snag, PR review into an hos topic), serves every asset from the binary,
-and asks for a login on any network address.
+## Fork of px0
+
+hos-code is a fork of [px0](https://github.com/px0-ai/px0) by Arpit Bhayani (MIT), forked on 8 Oct 2026. As of
+28 Nov 2026 it is 26 commits ahead of px0 and 50 behind. Upstream changes come in by hand when hos needs them;
+nothing merges back automatically.
+
+What this fork changes:
+
+- Removes px0's AI editing features and self-update. hos-code is a reader and reviewer.
+- Adds the hos bridge: Mark Snag (with attachments) and pull request review comments that land in a hos topic.
+- Serves every asset from the binary, and asks for a login on any network address (tokens can come from 0600 files).
+- Smaller additions: Open in Finder, JSON folding, intra-line diff highlights, a phone layout.
+
+Bugs in px0 itself go to [px0](https://github.com/px0-ai/px0/issues). Bugs in hos-code go to
+[hos Issues](https://github.com/Harinder441/hos/issues/new?template=hos-code.yml).
+
+## What it does
 
 - Starts in under a millisecond; the server uses about 20–30 MB of RAM (upstream measurements, [BENCHMARKS.md](BENCHMARKS.md))
 - One static Go binary: no Electron, no Node, no CGO, no runtime downloads
@@ -22,14 +36,14 @@ and asks for a login on any network address.
 
 ## Install
 
-From a release (macOS, Linux, BSD), once releases are published:
+From the [latest release](https://github.com/Harinder441/hos-code/releases/latest) on macOS, Linux or BSD:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Harinder441/hos-code/master/install.sh | sh
 ```
 
-Each release archive holds the `hos-code` binary, `LICENSE`, `THIRD_PARTY_NOTICES.md` and this README, and is listed
-with its SHA-256 in `checksums.txt`.
+On Windows, download the `.zip` for your CPU from the release. Each release archive holds the `hos-code` binary,
+`LICENSE`, `THIRD_PARTY_NOTICES.md` and this README, and is listed with its SHA-256 in `checksums.txt`.
 
 From source (Go 1.25+ and Node.js or Bun):
 
